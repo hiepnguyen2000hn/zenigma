@@ -50,13 +50,32 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
             setLoading(true);
             setError(null);
 
-            const response = await fetch(`/api/binance/chart/${pair}?interval=${interval}&limit=500`);
+            // Use absolute URL for production, relative for development
+            const baseUrl = typeof window !== 'undefined' && window.location.origin
+                ? window.location.origin
+                : '';
+            const url = `${baseUrl}/api/binance/chart/${pair}?interval=${interval}&limit=500`;
+
+            console.log('🔄 Fetching chart data from:', url);
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                cache: 'no-store'
+            });
+
+            console.log('📡 Response status:', response.status);
 
             if (!response.ok) {
-                throw new Error('Failed to fetch chart data');
+                const errorText = await response.text();
+                console.error('❌ API Error:', errorText);
+                throw new Error(`Failed to fetch chart data: ${response.status}`);
             }
 
             const result = await response.json();
+            console.log('✅ Chart data received:', result.dataPoints, 'candles');
 
             if (!result.success || !result.data) {
                 throw new Error('Invalid response from API');
@@ -64,8 +83,9 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
 
             return result.data;
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to load chart data');
-            console.error('Error fetching chart data:', err);
+            const errorMessage = err instanceof Error ? err.message : 'Failed to load chart data';
+            setError(errorMessage);
+            console.error('💥 Error fetching chart data:', err);
             return null;
         } finally {
             setLoading(false);
