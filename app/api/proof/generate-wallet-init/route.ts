@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs/promises";
+import crypto from "crypto";
 import { CIRCUITS_DIR } from "@/lib/server-constants";
 import { TOTAL_TOKEN, MAX_PENDING_ORDER } from "@/lib/constants";
 
@@ -82,7 +83,9 @@ export async function POST(request: NextRequest) {
     const emptyBalances = Array(TOTAL_TOKEN).fill('0');
     const emptyOrders = Array(MAX_PENDING_ORDER).fill('0');
 
-    const user_secret = BigInt(userSecret);
+    // Hash userSecret to ensure it fits within BN254 field modulus (254 bits)
+    const hash = crypto.createHash('sha256').update(String(userSecret), 'utf-8').digest('hex');
+    const user_secret = BigInt('0x' + hash.slice(0, 63)); // Take first 252 bits
 
     // Use Poseidon2 hash (cryptographically secure)
     const emptyAvailableBalancesHash = await poseidon2Hash(emptyBalances);
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
     // Generate witness
     const witnessStartTime = Date.now();
     const { witness } = await noir.execute({
-      user_secret: userSecret,
+      user_secret: user_secret.toString(),
       initial_commitment: initialCommitment,
     });
     const witnessTime = Date.now() - witnessStartTime;
