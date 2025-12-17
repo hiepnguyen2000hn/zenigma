@@ -1,11 +1,15 @@
 "use client";
 
 import { HelpCircle } from 'lucide-react';
+import { useState } from 'react';
 import ConnectButton from './ConnectButton';
 import ChainSelector from './ChainSelector';
 import TokenDisplay from './TokenDisplay';
+import ProofTestModal from './ProofTestModal';
 
 const Header = () => {
+    const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+
     const exchanges = [
         { name: 'BBQ Feeds', price: '' },
         { name: 'Binance', price: '$106,061.84', status: 'LIVE' },
@@ -30,6 +34,14 @@ const Header = () => {
                 </div>
 
                 <div className="flex items-center space-x-4">
+                    <button
+                        onClick={() => setIsProofModalOpen(true)}
+                        className="flex items-center space-x-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm font-medium"
+                        title="Test Wallet Proof API"
+                    >
+                        {/*<Flask size={16} />*/}
+                        <span>Test Proof API</span>
+                    </button>
                     <ChainSelector />
                     <ConnectButton />
                 </div>
@@ -49,6 +61,12 @@ const Header = () => {
                     </div>
                 ))}
             </div>
+
+            {/* Proof Test Modal */}
+            <ProofTestModal
+                isOpen={isProofModalOpen}
+                onClose={() => setIsProofModalOpen(false)}
+            />
         </header>
     );
 };

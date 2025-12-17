@@ -18,7 +18,18 @@
       "Bash(dir:*)",
       "Bash(attrib:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "WebFetch(domain:vercel.com)",
+      "Bash(rm:*)",
+      "Bash(cross-env TURBOPACK=0 pnpm build:*)",
+      "Bash(set TURBOPACK=0)",
+      "WebFetch(domain:docs.privy.io)",
+      "Bash(copy:*)",
+      "Bash(if [ -d \"C:\\code\\darkpull\\my-app\\circuits\" ])",
+      "Bash(then echo \"Directory exists\")",
+      "Bash(else echo \"Directory does not exist\")",
+      "Bash(fi)"
     ],
     "deny": [],
     "ask": []

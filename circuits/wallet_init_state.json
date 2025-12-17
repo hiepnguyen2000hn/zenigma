@@ -1,0 +1,40 @@
+{
+  "noir_version": "0.36.0+801c71880ecf8386a26737a5d8bb5b4cb164b2ab",
+  "hash": 16074017246827573136,
+  "abi": {
+    "parameters": [
+      {
+        "name": "user_secret",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "initial_commitment",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      }
+    ],
+    "return_type": null,
+    "error_types": {}
+  },
+  "bytecode": "H4sIAAAAAAAA/7WUW25rIQxFT9Le26bPj07EYIPtv04FG5j/CKqSJpXo6eOjTSxtsYXAWmDMZjnE49Bu+Ryb4/h8HBEyUePYAoYCUU0SULIsQUKSVKMgNiFhNWXQQNhCT4odDrGdcsEf45ycF7/njOuJPdvT0OWK9eXot9/4i6N/37cf/w39H7qa5s91B9dTrmBUid3MKSrmVsay6iWyDu+GkrnHUMfWDsFV2NUygaumnqvrzLldccLfIlye8My7KVesyCAZGgJB61WigBdgjCWDh8qpGRaLCuPcXkmSkzOK9GCVgc9Zm5uZk1vnURhlVfRgAJ4LcjdOpLlS7pEpg2kjtNqMYkldgUV7GoVs5+S8nTkDDx7t2IVyIazBTThVDCSisQ+u3jIULZBlrClQIqj5yIZZ1L7qo/0bfe+X3eRvJn+7fOyju6H7oYfl8O+t+2h74jvYLKd763eny/XGtf6TZr9ZfohXZ4aFSTkGAAA=",
+  "debug_symbols": "5ZVNDoMgEEbvwtoFDAqtV2mMwd+QEDSKTRrj3YutWhJNu67s5pt5M+GtGFFRZkOdSl01PYpvI1JNLoxstE0jwq9W3wo9p96IzqD4AixApS5sxcMpQJVUpa3pFOxQGsGChoRt6Ly1Q4GT9Sxwir/DhHO6wIRf4QeMYX0FwSxy4SRA5PyKcH5FeqRIcLTdtzt/Lxn6IBn5IMl8kOQ+SF4OJQl8JBm4kokNWSeVknXqfrW2fRedFJkql1gNOnem5tG+J/bEEw==",
+  "file_map": {
+    "74": {
+      "source": "use std::default::Default;\nuse std::hash::Hasher;\n\ncomptime global RATE: u32 = 3;\n\npub struct Poseidon2 {\n    cache: [Field; 3],\n    state: [Field; 4],\n    cache_size: u32,\n    squeeze_mode: bool, // 0 => absorb, 1 => squeeze\n}\n\nimpl Poseidon2 {\n    #[no_predicates]\n    pub fn hash<let N: u32>(input: [Field; N], message_size: u32) -> Field {\n        Poseidon2::hash_internal(input, message_size, message_size != N)\n    }\n\n    pub(crate) fn new(iv: Field) -> Poseidon2 {\n        let mut result =\n            Poseidon2 { cache: [0; 3], state: [0; 4], cache_size: 0, squeeze_mode: false };\n        result.state[RATE] = iv;\n        result\n    }\n\n    fn perform_duplex(&mut self) {\n        // add the cache into sponge state\n        for i in 0..RATE {\n            // We effectively zero-pad the cache by only adding to the state\n            // cache that is less than the specified `cache_size`\n            if i < self.cache_size {\n                self.state[i] += self.cache[i];\n            }\n        }\n        self.state = crate::poseidon2_permutation(self.state, 4);\n    }\n\n    fn absorb(&mut self, input: Field) {\n        assert(!self.squeeze_mode);\n        if self.cache_size == RATE {\n            // If we're absorbing, and the cache is full, apply the sponge permutation to compress the cache\n            self.perform_duplex();\n            self.cache[0] = input;\n            self.cache_size = 1;\n        } else {\n            // If we're absorbing, and the cache is not full, add the input into the cache\n            self.cache[self.cache_size] = input;\n            self.cache_size += 1;\n        }\n    }\n\n    fn squeeze(&mut self) -> Field {\n        assert(!self.squeeze_mode);\n        // If we're in absorb mode, apply sponge permutation to compress the cache.\n        self.perform_duplex();\n        self.squeeze_mode = true;\n\n        // Pop one item off the top of the permutation and return it.\n        self.state[0]\n    }\n\n    fn hash_internal<let N: u32>(\n        input: [Field; N],\n        in_len: u32,\n        is_variable_length: bool,\n    ) -> Field {\n        let two_pow_64 = 18446744073709551616;\n        let iv: Field = (in_len as Field) * two_pow_64;\n        let mut sponge = Poseidon2::new(iv);\n        for i in 0..input.len() {\n            if i < in_len {\n                sponge.absorb(input[i]);\n            }\n        }\n\n        // In the case where the hash preimage is variable-length, we append `1` to the end of the input, to distinguish\n        // from fixed-length hashes. (the combination of this additional field element + the hash IV ensures\n        // fixed-length and variable-length hashes do not collide)\n        if is_variable_length {\n            sponge.absorb(1);\n        }\n        sponge.squeeze()\n    }\n}\n\npub struct Poseidon2Hasher {\n    _state: [Field],\n}\n\nimpl Hasher for Poseidon2Hasher {\n    fn finish(self) -> Field {\n        let iv: Field = (self._state.len() as Field) * 18446744073709551616; // iv = (self._state.len() << 64)\n        let mut sponge = Poseidon2::new(iv);\n        for i in 0..self._state.len() {\n            sponge.absorb(self._state[i]);\n        }\n        sponge.squeeze()\n    }\n\n    fn write(&mut self, input: Field) {\n        self._state = self._state.push_back(input);\n    }\n}\n\nimpl Default for Poseidon2Hasher {\n    fn default() -> Self {\n        Poseidon2Hasher { _state: &[] }\n    }\n}\n",
+      "path": "/Users/gary/nargo/github.com/noir-lang/poseidonv0.1.1/src/poseidon2.nr"
+    },
+    "83": {
+      "source": "use dep::poseidon::poseidon2::Poseidon2;\nuse dep::common::constants::{TOTAL_TOKEN, MAX_PENDING_ORDER};\n\nfn main(\n    // private\n    user_secret: Field,\n    // public input\n    initial_commitment: pub Field\n) {\n    // empty value\n    let empty_available_balances: [Field; TOTAL_TOKEN] = [0; TOTAL_TOKEN];\n    let empty_reserved_balances: [Field; TOTAL_TOKEN] = [0; TOTAL_TOKEN];\n    let empty_orders_list: [Field; MAX_PENDING_ORDER] = [0; MAX_PENDING_ORDER];\n    let empty_fees: Field = 0;\n    let initial_nonce: Field = 0;\n\n    let empty_available_balances_hash = Poseidon2::hash(empty_available_balances, TOTAL_TOKEN);\n    let empty_reserved_balances_hash = Poseidon2::hash(empty_reserved_balances, TOTAL_TOKEN);\n    let empty_orders_root = Poseidon2::hash(empty_orders_list, MAX_PENDING_ORDER);\n    let initial_randomness = Poseidon2::hash([user_secret, initial_nonce], 2);\n\n    let computed_input = [empty_available_balances_hash, empty_reserved_balances_hash, empty_orders_root, empty_fees, initial_randomness];\n    let computed_commitment: Field = Poseidon2::hash(computed_input, computed_input.len());\n\n    assert_eq(computed_commitment, initial_commitment);\n}\n",
+      "path": "/Users/gary/Desktop/RELIPA/dark_pool/noir_zk/wallet_init_state/src/main.nr"
+    }
+  },
+  "names": [
+    "main"
+  ],
+  "brillig_names": []
+}
