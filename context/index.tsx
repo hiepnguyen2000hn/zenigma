@@ -5,6 +5,7 @@ import { WagmiProvider } from "@privy-io/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { privyAppId, config } from "@/config";
 import React, { type ReactNode } from "react";
+import BalanceProvider from "@/components/BalanceProvider";
 
 // Set up queryClient
 const queryClient = new QueryClient();
@@ -35,7 +36,9 @@ function ContextProvider({
     >
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={config}>
-          {children}
+          <BalanceProvider>
+            {children}
+          </BalanceProvider>
         </WagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>
