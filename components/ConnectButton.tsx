@@ -6,7 +6,7 @@ import { useEffect, useState, useRef } from "react";
 import { useAtomValue } from "jotai";
 import { balancesAtom } from "@/store/trading";
 import { auth } from "@/lib/api";
-import DepositModal from "./depositModal";
+import DepositModal from "@/components/depositModal";
 
 interface ConnectButtonProps {
     className?: string;
