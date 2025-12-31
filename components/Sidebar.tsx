@@ -190,10 +190,10 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
 
             if (submitResult.success) {
                 console.log('✅ Step 7: Order created successfully!', submitResult);
-                alert(`Order created: ${submitResult.verified ? 'SUCCESS ✅' : 'FAILED ❌'}`);
+                // alert(`Order created: ${submitResult.verified ? 'SUCCESS ✅' : 'FAILED ❌'}`);
             } else {
                 console.error('❌ Step 7: Order submission failed:', submitResult.error);
-                alert(`Order submission failed: ${submitResult.error}`);
+                // alert(`Order submission failed: ${submitResult.error}`);
             }
 
         } catch (error) {

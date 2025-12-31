@@ -57,6 +57,11 @@ export const API_ENDPOINTS = {
     LIST: `${API_PREFIX}/order/:wallet_id/list`,
   },
 
+  // Balance
+  BALANCE: {
+    TRANSFER_HISTORY: `${API_PREFIX}/balance/:wallet_id/transfer-history`,
+  },
+
   // Token
   TOKEN: {
     GET_ALL: `${API_PREFIX}/token/all`,

@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Search } from "lucide-react";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { useSetAtom } from "jotai";
+import { updateTradingPairAtom } from "@/store/trading";
 import { useTokens } from "@/hooks/useTokens";
 import { type Token } from "@/lib/services";
 
@@ -142,11 +145,38 @@ export const TokenIcon = ({ token, size = "md" }: TokenIconProps) => {
 const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSelectorProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const pathname = usePathname();
+  const updateTradingPair = useSetAtom(updateTradingPairAtom);
 
   // ✅ Fetch tokens from API with cache
   const { tokens, isLoading } = useTokens();
 
-  const selected = tokens.find((t) => t.symbol === selectedToken) || tokens[0];
+  // ✅ Auto-detect token from URL (e.g., /TradingDashboard/btc-usdc -> BTC)
+  const getTokenFromUrl = (): string | null => {
+    if (!pathname) return null;
+
+    // Match pattern: /TradingDashboard/btc-usdc or /TradingDashboard/[pair]
+    const match = pathname.match(/\/TradingDashboard\/([^\/]+)/);
+    if (!match) return null;
+
+    const pair = match[1]; // e.g., "btc-usdc"
+    const [baseToken] = pair.split('-'); // e.g., "btc"
+
+    return baseToken ? baseToken.toUpperCase() : null;
+  };
+
+  // ✅ Priority: URL token > selectedToken prop
+  const urlToken = getTokenFromUrl();
+  const effectiveToken = urlToken || selectedToken;
+  const selected = tokens.find((t) => t.symbol === effectiveToken) || tokens[0];
+
+  // ✅ Auto-update parent when URL changes (sync URL -> state)
+  useEffect(() => {
+    if (urlToken && urlToken !== selectedToken) {
+      console.log(`🔄 [TokenSelector] URL changed -> Auto-selecting ${urlToken}`);
+      onSelectToken(urlToken);
+    }
+  }, [urlToken, selectedToken, onSelectToken]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -167,7 +197,34 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
   );
 
   const handleSelectToken = (token: Token) => {
+    // ✅ Update parent state
     onSelectToken(token.symbol);
+
+    // ✅ Update URL and store if we're on TradingDashboard page
+    if (pathname && pathname.includes('/TradingDashboard/')) {
+      const match = pathname.match(/\/TradingDashboard\/([^\/]+)/);
+      if (match) {
+        const currentPair = match[1]; // e.g., "btc-usdc"
+        const [_, quoteToken] = currentPair.split('-'); // Get quote token (e.g., "usdc")
+
+        // Build new pair
+        const newPairSymbol = `${token.symbol.toLowerCase()}-${quoteToken || 'usdc'}`;
+        const newUrl = `/TradingDashboard/${newPairSymbol}`;
+
+        console.log(`🔄 [TokenSelector] Updating pair to: ${newPairSymbol}`);
+
+        // ✅ Update store (triggers Chart re-render)
+        updateTradingPair({
+          base: token.symbol.toUpperCase(),
+          quote: (quoteToken || 'usdc').toUpperCase(),
+          symbol: newPairSymbol,
+        });
+
+        // ✅ Update URL without reload page
+        window.history.pushState({}, '', newUrl);
+      }
+    }
+
     setIsOpen(false);
     setSearchQuery("");
   };
@@ -261,7 +318,7 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
                           whileTap={{ scale: 0.98 }}
                           onClick={() => handleSelectToken(token)}
                           className={`w-full flex items-center space-x-4 p-4 rounded-lg transition-colors ${
-                            token.symbol === selectedToken
+                            token.symbol === effectiveToken
                               ? "bg-white/10 border border-white/20"
                               : "hover:bg-white/5"
                           }`}
@@ -271,7 +328,7 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
                             <div className="font-medium text-white">{token.symbol}</div>
                             <div className="text-sm text-gray-400">{token.name}</div>
                           </div>
-                          {token.symbol === selectedToken && (
+                          {token.symbol === effectiveToken && (
                             <motion.div
                               initial={{ scale: 0 }}
                               animate={{ scale: 1 }}

@@ -20,10 +20,12 @@ export interface Token {
 }
 
 export interface Order {
-  status: number;    // Order status: 0=open, 4=cancelled, etc.
+  status: string;    // Order status: "Created", "Matching", "Filled", etc.
+  order_index: number; // Order index (0-3) - use this for cancel
   side: number;      // 0=buy, 1=sell
   asset: number;     // Token index
   order_value: number;
+  price: number;     // Order price
   size: number;
   filled: number;
   time: string;      // ISO 8601 timestamp
@@ -31,6 +33,20 @@ export interface Order {
 
 export interface OrderListResponse {
   data: Order[];
+}
+
+export interface Transfer {
+  status: string;    // Transfer status: "queued" | "completed" | "failed"
+  token: number;     // Token index
+  direction: string; // Transfer direction: "DEPOSIT" | "WITHDRAW"
+  amount: string;    // Transfer amount
+  value: string;     // USD value (without $ sign)
+  tx_hash: string;   // Transaction hash
+  time: string;      // ISO 8601 timestamp
+}
+
+export interface TransferHistoryResponse {
+  data: Transfer[];
 }
 
 export interface UserProfile {
@@ -45,6 +61,12 @@ export interface UserProfile {
   merkle_index: number;
   sibling_paths: string[];
   sync: boolean;
+  is_initialized: boolean;  // ✅ Check this to decide if need to init wallet
+  blinder?: string;
+  pk_root?: string;
+  current_commitment?: string;
+  current_nullifier?: string;
+  last_tx_hash?: string;
   created_at: string;
   updated_at: string;
 }
@@ -342,6 +364,45 @@ export async function getOrderList(
   }
 ): Promise<OrderListResponse> {
   const endpoint = API_ENDPOINTS.ORDER.LIST.replace(':wallet_id', wallet_id);
+  const response = await apiClient.get(endpoint, { params });
+  return response.data;
+}
+
+// ============================================
+// BALANCE SERVICES
+// ============================================
+
+/**
+ * Get transfer history with pagination and filters
+ *
+ * @param wallet_id Wallet ID (extracted from Privy user ID)
+ * @param params Query parameters
+ * @param params.page Page number (default: 1)
+ * @param params.limit Items per page (default: 20)
+ * @param params.status Transfer status filter - array of strings (e.g., ["queued", "completed", "failed"])
+ * @param params.direction Transfer direction filter ("DEPOSIT" | "WITHDRAW")
+ * @param params.token Token/asset filter (token index)
+ * @param params.from_date Filter from date (ISO 8601)
+ * @param params.to_date Filter to date (ISO 8601)
+ *
+ * @example
+ * const walletId = extractPrivyWalletId(user.id);
+ * const transfers = await getTransferHistory(walletId, { page: 1, limit: 20 });
+ * const deposits = await getTransferHistory(walletId, { direction: "DEPOSIT", status: ["completed"] });
+ */
+export async function getTransferHistory(
+  wallet_id: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    status?: string[];
+    direction?: string;
+    token?: number;
+    from_date?: string;
+    to_date?: string;
+  }
+): Promise<TransferHistoryResponse> {
+  const endpoint = API_ENDPOINTS.BALANCE.TRANSFER_HISTORY.replace(':wallet_id', wallet_id);
   const response = await apiClient.get(endpoint, { params });
   return response.data;
 }

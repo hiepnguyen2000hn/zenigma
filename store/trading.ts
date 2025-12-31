@@ -294,7 +294,59 @@ export const updateOrderStatusAtom = atom(
 );
 
 // ============================================
-// 10. DERIVED STATS
+// 10. USER PROFILE
+// ============================================
+
+export interface UserProfile {
+  wallet_id: string;
+  address: string;
+  current_commitment: string;
+  current_nullifier: string;
+  merkle_index: number;
+  merkle_root: string;
+  available_balances: string[];
+  reserved_balances: string[];
+  orders_list: any[];
+  fees: string;
+  nonce: number;
+  is_initialized: boolean;
+  sync: boolean;
+  sibling_paths: string[];
+  pk_root?: string;
+  blinder?: string;
+  last_tx_hash?: string;
+}
+
+// User profile atom
+export const userProfileAtom = atom<UserProfile | null>(null);
+
+// Update user profile action
+export const updateUserProfileAtom = atom(
+  null,
+  (get, set, profile: UserProfile) => {
+    set(userProfileAtom, profile);
+
+    // ✅ Auto-update balances when profile changes
+    const balances: TokenBalance[] = profile.available_balances
+      .map((balance, index) => {
+        const balanceNum = parseFloat(balance);
+        if (balanceNum > 0) {
+          return {
+            token: `Token${index}`, // Replace with token mapping
+            balance: balanceNum,
+            usdValue: balanceNum * 1, // Mock USD value
+          };
+        }
+        return null;
+      })
+      .filter((b): b is TokenBalance => b !== null);
+
+    set(balancesAtom, balances);
+  }
+);
+
+// ============================================
+// 11. DERIVED STATS
 // ============================================
 
 // Total portfolio value

@@ -13,14 +13,15 @@ import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import toast from 'react-hot-toast';
 
-// Order status mapping
+// Order status mapping (from API string to UI display)
 const ORDER_STATUS = {
-    0: { label: 'Open', color: 'text-green-500', dotColor: 'text-green-500 fill-green-500' },
-    1: { label: 'Partial', color: 'text-yellow-500', dotColor: 'text-yellow-500 fill-yellow-500' },
-    2: { label: 'Filled', color: 'text-blue-500', dotColor: 'text-blue-500 fill-blue-500' },
-    3: { label: 'Matched', color: 'text-purple-500', dotColor: 'text-purple-500 fill-purple-500' },
-    4: { label: 'Cancelled', color: 'text-gray-500', dotColor: 'text-gray-500 fill-gray-500' },
-    5: { label: 'Created', color: 'text-cyan-500', dotColor: 'text-cyan-500 fill-cyan-500' },
+    'Created': { label: 'Created', color: 'text-cyan-500', dotColor: 'text-cyan-500 fill-cyan-500' },
+    'Matching': { label: 'Matching', color: 'text-yellow-500', dotColor: 'text-yellow-500 fill-yellow-500' },
+    'Filled': { label: 'Filled', color: 'text-blue-500', dotColor: 'text-blue-500 fill-blue-500' },
+    'Matched': { label: 'Matched', color: 'text-purple-500', dotColor: 'text-purple-500 fill-purple-500' },
+    'Cancelled': { label: 'Cancelled', color: 'text-gray-500', dotColor: 'text-gray-500 fill-gray-500' },
+    'Open': { label: 'Open', color: 'text-green-500', dotColor: 'text-green-500 fill-green-500' },
+    'Partial': { label: 'Partial', color: 'text-yellow-500', dotColor: 'text-yellow-500 fill-yellow-500' },
 } as const;
 
 // Order filter params interface
@@ -259,16 +260,17 @@ const OrderPanel = () => {
                         <th className="text-left px-6 py-3 text-gray-400 font-normal">Status</th>
                         <th className="text-left px-6 py-3 text-gray-400 font-normal">Side</th>
                         <th className="text-left px-6 py-3 text-gray-400 font-normal">Asset</th>
-                        <th className="text-right px-6 py-3 text-gray-400 font-normal">
-                            <div className="flex items-center justify-end space-x-1">
-                                <span>Order Value</span>
-                                <span className="text-xs">▲</span>
-                            </div>
-                        </th>
+                        <th className="text-right px-6 py-3 text-gray-400 font-normal">Price</th>
                         <th className="text-right px-6 py-3 text-gray-400 font-normal">
                             <div className="flex items-center justify-end space-x-1">
                                 <span>Size</span>
                                 <span className="text-xs">◇</span>
+                            </div>
+                        </th>
+                        <th className="text-right px-6 py-3 text-gray-400 font-normal">
+                            <div className="flex items-center justify-end space-x-1">
+                                <span>Order Value</span>
+                                <span className="text-xs">▲</span>
                             </div>
                         </th>
                         <th className="text-right px-6 py-3 text-gray-400 font-normal">Filled</th>
@@ -284,25 +286,25 @@ const OrderPanel = () => {
                     <tbody>
                     {!authenticated ? (
                         <tr>
-                            <td colSpan={8} className="text-center py-20 text-gray-400">
+                            <td colSpan={9} className="text-center py-20 text-gray-400">
                                 Sign in to view your orders.
                             </td>
                         </tr>
                     ) : loading ? (
                         <tr>
-                            <td colSpan={8} className="text-center py-20 text-gray-400">
+                            <td colSpan={9} className="text-center py-20 text-gray-400">
                                 Loading orders...
                             </td>
                         </tr>
                     ) : error ? (
                         <tr>
-                            <td colSpan={8} className="text-center py-20 text-red-500">
+                            <td colSpan={9} className="text-center py-20 text-red-500">
                                 Error: {error}
                             </td>
                         </tr>
                     ) : !hasOrders ? (
                         <tr>
-                            <td colSpan={8} className="text-center py-20 text-gray-400">
+                            <td colSpan={9} className="text-center py-20 text-gray-400">
                                 No open orders.
                             </td>
                         </tr>
@@ -313,7 +315,7 @@ const OrderPanel = () => {
                             const quoteSymbol = 'USDC'; // Default quote token (assume USDC for now)
 
                             const isBuy = order.side === 0;
-                            const status = ORDER_STATUS[order.status as keyof typeof ORDER_STATUS] || ORDER_STATUS[0];
+                            const status = ORDER_STATUS[order.status as keyof typeof ORDER_STATUS] || ORDER_STATUS['Created'];
 
                             // Format time
                             const orderTime = new Date(order.time).toLocaleString('en-US', {
@@ -353,14 +355,19 @@ const OrderPanel = () => {
                                         </div>
                                     </td>
 
-                                    {/* Order Value */}
+                                    {/* Price */}
                                     <td className="px-6 py-4 text-right text-white">
-                                        {order.order_value.toFixed(2)} {quoteSymbol}
+                                        {order.price} {quoteSymbol}
                                     </td>
 
                                     {/* Size */}
                                     <td className="px-6 py-4 text-right text-white">
                                         {order.size} {assetSymbol}
+                                    </td>
+
+                                    {/* Order Value */}
+                                    <td className="px-6 py-4 text-right text-white">
+                                        {order.order_value.toFixed(2)} {quoteSymbol}
                                     </td>
 
                                     {/* Filled */}
@@ -378,12 +385,12 @@ const OrderPanel = () => {
                                     {/* Action - Cancel Button */}
                                     <td className="px-6 py-4 text-center">
                                         <button
-                                            onClick={() => handleCancelOrder(index)}
-                                            disabled={cancellingOrderIndex === index || order.status === 4} // Disable if cancelling or already cancelled
+                                            onClick={() => handleCancelOrder(order.order_index)}
+                                            disabled={cancellingOrderIndex === order.order_index || order.status === 'Cancelled'} // Disable if cancelling or already cancelled
                                             className="inline-flex items-center space-x-1 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-500 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                             title="Cancel Order"
                                         >
-                                            {cancellingOrderIndex === index ? (
+                                            {cancellingOrderIndex === order.order_index ? (
                                                 <>
                                                     <div className="w-3 h-3 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin"></div>
                                                     <span>Cancelling...</span>

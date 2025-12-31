@@ -5,36 +5,37 @@ import { ChevronDown, ExternalLink } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
-import { getUserProfile } from '@/lib/services';
+import { getUserProfile, getTransferHistory, type Transfer } from '@/lib/services';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import Header from './Header';
 
-// Transfer type mapping
-const TRANSFER_TYPE = {
-  0: { label: 'Deposit', color: 'text-green-500' },
-  1: { label: 'Withdraw', color: 'text-red-500' },
+// Transfer direction mapping (from API string to UI display)
+const TRANSFER_DIRECTION = {
+  DEPOSIT: { label: 'Deposit', color: 'text-green-500' },
+  WITHDRAW: { label: 'Withdraw', color: 'text-red-500' },
 } as const;
 
-// Transfer status mapping
+// Transfer status mapping (from API string to UI display)
 const TRANSFER_STATUS = {
-  0: { label: 'Queued', color: 'text-yellow-500' },
-  1: { label: 'Completed', color: 'text-green-500' },
-  2: { label: 'Failed', color: 'text-red-500' },
+  queued: { label: 'Queued', color: 'text-yellow-500' },
+  completed: { label: 'Completed', color: 'text-green-500' },
+  failed: { label: 'Failed', color: 'text-red-500' },
 } as const;
+
+/**
+ * Shorten transaction hash for display
+ * @example shortenHash("0x629a7f88d44377b2c00b5b24fe578ac5af02eab878305424248087db3413f5db")
+ * // Returns: "0x629a...5db"
+ */
+const shortenHash = (hash: string, startLength = 6, endLength = 3): string => {
+  if (!hash || hash.length < startLength + endLength) return hash;
+  return `${hash.slice(0, startLength)}...${hash.slice(-endLength)}`;
+};
 
 interface Asset {
   tokenIndex: number;
   balance: string;
   value: string;
-}
-
-interface Transfer {
-  status: number;
-  asset: number;
-  type: number;
-  amount: string;
-  value: string;
-  time: string;
 }
 
 const MyAssets = () => {
@@ -83,41 +84,14 @@ const MyAssets = () => {
 
         setAssets(assetsList);
 
-        // Mock transfer history (replace with actual API call when available)
-        setTransfers([
-          {
-            status: 0,
-            asset: 0,
-            type: 0,
-            amount: '360',
-            value: '$360',
-            time: 'July 21, 2025 12:45:55',
-          },
-          {
-            status: 1,
-            asset: 1,
-            type: 0,
-            amount: '10',
-            value: '$1000',
-            time: 'July 18, 2025 15:20:01',
-          },
-          {
-            status: 2,
-            asset: 2,
-            type: 1,
-            amount: '900',
-            value: '$899',
-            time: 'July 18, 2025 15:20:01',
-          },
-          {
-            status: 1,
-            asset: 2,
-            type: 0,
-            amount: '1000',
-            value: '$1001',
-            time: 'July 18, 2025 13:33:32',
-          },
-        ]);
+        // ✅ Fetch transfer history from API
+        console.log('🔍 Fetching transfer history for wallet:', walletId);
+        const transferResponse = await getTransferHistory(walletId, {
+          page: 1,
+          limit: 20,
+        });
+        console.log('✅ Transfer history loaded:', transferResponse);
+        setTransfers(transferResponse.data || []);
       } catch (err) {
         console.error('Failed to fetch assets:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch assets');
@@ -299,7 +273,7 @@ const MyAssets = () => {
                     Time
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Action
+                    Hash
                   </th>
                 </tr>
               </thead>
@@ -324,9 +298,26 @@ const MyAssets = () => {
                   </tr>
                 ) : (
                   transfers.map((transfer, index) => {
-                    const symbol = getSymbol(transfer.asset);
-                    const status = TRANSFER_STATUS[transfer.status as keyof typeof TRANSFER_STATUS] || TRANSFER_STATUS[0];
-                    const type = TRANSFER_TYPE[transfer.type as keyof typeof TRANSFER_TYPE] || TRANSFER_TYPE[0];
+                    // ✅ Map API response to UI display
+                    const symbol = getSymbol(transfer.token);
+                    const status = TRANSFER_STATUS[transfer.status as keyof typeof TRANSFER_STATUS] || TRANSFER_STATUS.queued;
+                    const direction = TRANSFER_DIRECTION[transfer.direction as keyof typeof TRANSFER_DIRECTION] || TRANSFER_DIRECTION.DEPOSIT;
+
+                    // Format time from ISO string
+                    const formattedTime = new Date(transfer.time).toLocaleString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    });
+
+                    // Shorten tx hash for display
+                    const shortHash = shortenHash(transfer.tx_hash);
+
+                    // Format value with USD
+                    const formattedValue = `$${parseFloat(transfer.value).toFixed(2)} USD`;
 
                     return (
                       <tr key={index} className="hover:bg-gray-900/50 transition-colors">
@@ -342,23 +333,30 @@ const MyAssets = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-medium ${type.color}`}>
-                            {type.label}
+                          <span className={`text-sm font-medium ${direction.color}`}>
+                            {direction.label}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
                           {transfer.amount}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
-                          {transfer.value}
+                          {formattedValue}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-400">
-                          {transfer.time}
+                          {formattedTime}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <button className="text-gray-400 hover:text-white transition-colors">
-                            <ExternalLink size={16} />
-                          </button>
+                          <a
+                            href={`https://sepolia.etherscan.io/tx/${transfer.tx_hash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+                            title={transfer.tx_hash}
+                          >
+                            <span className="text-xs">{shortHash}</span>
+                            <ExternalLink size={14} />
+                          </a>
                         </td>
                       </tr>
                     );

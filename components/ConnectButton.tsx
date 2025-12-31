@@ -3,10 +3,13 @@
 import { usePrivy, useLogin, useLogout } from "@privy-io/react-auth";
 import { Wallet, LogOut, DollarSign, ChevronDown, ArrowDownToLine } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
-import { useAtomValue } from "jotai";
-import { balancesAtom } from "@/store/trading";
+import { useAtomValue, useSetAtom } from "jotai";
+import { balancesAtom, updateUserProfileAtom, type UserProfile } from "@/store/trading";
 import { auth } from "@/lib/api";
+import { getUserProfile } from "@/lib/services";
+import { extractPrivyWalletId } from "@/lib/wallet-utils";
 import DepositModal from "@/components/DepositModal";
+import toast from "react-hot-toast";
 
 interface ConnectButtonProps {
     className?: string;
@@ -18,6 +21,7 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess }: ConnectButto
     const { authenticated, user, getAccessToken } = usePrivy();
     const { logout } = useLogout();
     const balances = useAtomValue(balancesAtom);
+    const updateUserProfile = useSetAtom(updateUserProfileAtom);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -73,17 +77,65 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess }: ConnectButto
                     await auth.setTokens(data.access_token, data.refresh_token);
                     console.log("Backend tokens saved successfully to cookies");
 
-                    // ✅ Kiểm tra wallet_address trước khi gọi onLoginSuccess
-                    // Chỉ gọi hdlInitWalletClientSide nếu user chưa có wallet_address
-                    const hasWalletAddress = data.user?.wallet_address;
+                    // ✅ Step 3: Call getUserProfile to check is_initialized
+                    try {
+                        console.log("🔍 Step 3: Calling getUserProfile to check is_initialized...");
+                        const walletId = extractPrivyWalletId(user.id);
+                        console.log("  - Wallet ID:", walletId);
 
-                    if (hasWalletAddress) {
-                        console.log("✅ User already has wallet_address:", data.user.wallet_address);
-                        console.log("⏭️ Skipping wallet initialization (already initialized)");
-                    } else {
-                        console.log("⚠️ User does not have wallet_address yet");
-                        console.log("🚀 Calling onLoginSuccess to initialize wallet...");
+                        const profile = await getUserProfile(walletId);
+                        console.log("✅ Profile loaded:", {
+                            wallet_id: walletId,
+                            address: profile.wallet_address,
+                            is_initialized: profile.is_initialized,
+                            merkle_index: profile.merkle_index,
+                            available_balances: profile.available_balances?.slice(0, 3),
+                        });
 
+                        // ✅ Step 4: Save profile to store
+                        console.log("💾 Step 4: Saving profile to store...");
+                        const profileData: UserProfile = {
+                            wallet_id: walletId,
+                            address: profile.wallet_address || '',
+                            current_commitment: profile.current_commitment || '',
+                            current_nullifier: profile.current_nullifier || '',
+                            merkle_index: profile.merkle_index || 0,
+                            merkle_root: profile.merkle_root || '',
+                            available_balances: profile.available_balances || Array(10).fill('0'),
+                            reserved_balances: profile.reserved_balances || Array(10).fill('0'),
+                            orders_list: profile.orders_list || Array(4).fill(null),
+                            fees: profile.fees?.toString() || '0',
+                            nonce: profile.nonce || 0,
+                            is_initialized: profile.is_initialized || false,
+                            sync: profile.sync || false,
+                            sibling_paths: profile.sibling_paths || [],
+                            pk_root: profile.pk_root,
+                            blinder: profile.blinder,
+                            last_tx_hash: profile.last_tx_hash,
+                        };
+
+                        updateUserProfile(profileData);
+                        console.log("✅ Profile saved to store successfully!");
+                        toast.success("Profile loaded!");
+
+                        // ✅ Step 5: Check is_initialized
+                        if (profile.is_initialized) {
+                            console.log("✅ User already initialized");
+                            console.log("⏭️ Skipping wallet initialization");
+                        } else {
+                            console.log("⚠️ User not initialized yet (is_initialized = false)");
+                            console.log("🚀 Calling onLoginSuccess to initialize wallet...");
+
+                            if (onLoginSuccess) {
+                                await onLoginSuccess();
+                            }
+                        }
+                    } catch (profileError) {
+                        console.error("❌ Error fetching profile:", profileError);
+                        toast.error("Failed to load profile");
+                        console.log("🚀 Calling onLoginSuccess to initialize wallet (fallback)...");
+
+                        // Fallback: if profile fetch fails, try to initialize
                         if (onLoginSuccess) {
                             await onLoginSuccess();
                         }

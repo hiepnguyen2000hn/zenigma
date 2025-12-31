@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { TrendingUp } from 'lucide-react';
+import { useAtomValue } from 'jotai';
+import { tradingPairAtom } from '@/store/trading';
 import type {
     IChartApi,
     ISeriesApi,
@@ -26,6 +28,10 @@ interface BinanceChartData {
 }
 
 const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
+    // ✅ Read trading pair from store (priority over props)
+    const tradingPair = useAtomValue(tradingPairAtom);
+    const effectivePair = tradingPair.symbol || pair;
+    const effectiveCrypto = tradingPair.base || crypto;
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -140,7 +146,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
 
     // Initialize WebSocket connection after initial data load
     const { isConnected } = useBinanceWebSocket({
-        symbol: pair,
+        symbol: effectivePair,
         interval: timeframe,
         onKlineUpdate: handleKlineUpdate,
         enabled: isWebSocketReady,
@@ -230,7 +236,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
 
                 // Step 1: Fetch initial data from REST API
                 console.log('📊 Step 1: Fetching initial data from REST API...');
-                const chartData = await fetchChartData(pair, timeframe);
+                const chartData = await fetchChartData(effectivePair, timeframe);
 
                 if (!mounted) {
                     chart.remove();
@@ -312,7 +318,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
                 clearTimeout(flashTimeoutRef.current);
             }
         };
-    }, [pair, timeframe]);
+    }, [effectivePair, timeframe]);
 
     const timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'];
 
@@ -353,7 +359,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
 
                     <div className="flex items-center space-x-4 text-sm">
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-400">{pair.toUpperCase()} • {timeframe} • BINANCE</span>
+                            <span className="text-gray-400">{effectivePair.toUpperCase()} • {timeframe} • BINANCE</span>
                             <span className={`w-2 h-2 rounded-full ${
                                 loading ? 'bg-yellow-500' :
                                 error ? 'bg-red-500' :
