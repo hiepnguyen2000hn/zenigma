@@ -21,6 +21,7 @@ import {useGenerateWalletInit} from '@/hooks/useGenerateWalletInit';
 import {saveAllKeys, signMessageWithSkRoot} from '@/lib/ethers-signer';
 import {extractPrivyWalletId} from '@/lib/wallet-utils';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 const Header = () => {
     const [isProofModalOpen, setIsProofModalOpen] = useState(false);
@@ -625,9 +626,9 @@ const Header = () => {
                     <div className="text-2xl font-bold">R</div>
 
                     <nav className="flex items-center space-x-6">
-                        <a href="#" className="text-white font-medium">Trade</a>
-                        <a href="#" className="text-gray-400 hover:text-white transition-colors">Assets</a>
-                        <a href="#" className="text-gray-400 hover:text-white transition-colors">Orders</a>
+                        <Link href="/TradingDashboard/btc-usdc" className="text-white font-medium">Trade</Link>
+                        <Link href="/assets" className="text-gray-400 hover:text-white transition-colors">Assets</Link>
+                        <Link href="/orders" className="text-gray-400 hover:text-white transition-colors">Orders</Link>
                     </nav>
                 </div>
 
@@ -664,21 +665,6 @@ const Header = () => {
                     <ChainSelector/>
                     <ConnectButton onLoginSuccess={hdlInitWalletClientSide}/>
                 </div>
-            </div>
-
-            <div className="flex items-center space-x-8 px-6 py-2 overflow-x-auto">
-                {exchanges.map((exchange, index) => (
-                    <div key={index} className="flex items-center space-x-2 whitespace-nowrap">
-                        <span className="text-gray-400 text-sm">{exchange.name}</span>
-                        {exchange.price && (
-                            <>
-                                <span className="text-green-500 text-sm font-medium">{exchange.price}</span>
-                                <span className="text-green-500 text-xs">{exchange.status}</span>
-                            </>
-                        )}
-                        {index < exchanges.length - 1 && <span className="text-gray-700">•</span>}
-                    </div>
-                ))}
             </div>
 
             <ProofTestModal

@@ -1,9 +1,24 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import { Shield, LineChart, Target } from "lucide-react";
+import SpotlightCard from "../SpotlightCard";
+import { useRef } from "react";
 
 export default function ThreeCardSection() {
+  const ref = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"]
+  });
+
+  // Parallax effects - staggered for each card
+  const y1 = useTransform(scrollYProgress, [0, 1], ["30%", "-10%"]);
+  const y2 = useTransform(scrollYProgress, [0, 1], ["20%", "-20%"]);
+  const y3 = useTransform(scrollYProgress, [0, 1], ["25%", "-15%"]);
+  const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0, 1, 1, 0.8]);
+  const scale = useTransform(scrollYProgress, [0, 0.5, 1], [0.85, 1, 0.95]);
+
   const cards = [
     {
       icon: Shield,
@@ -28,26 +43,34 @@ export default function ThreeCardSection() {
     },
   ];
 
+  const cardYs = [y1, y2, y3];
+
   return (
-    <section className="relative w-full py-8">
-      <div className="max-w-[1280px] mx-auto px-12">
+    <section ref={ref} className="relative w-full py-8">
+      <motion.div
+        className="max-w-[1280px] mx-auto px-12"
+        style={{ opacity, scale }}
+      >
         <div className="grid grid-cols-3 gap-6">
           {cards.map((card, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.15 }}
-              whileHover={{ y: -4 }}
-              className="rounded-2xl p-5 relative overflow-hidden"
-              style={{
-                background: "rgba(40, 37, 55, 0.4)",
-                backdropFilter: "blur(16px)",
-                border: `1px solid ${card.color}33`,
-                boxShadow: `0 0 20px ${card.color}22`,
-              }}
-            >
+            <motion.div key={i} style={{ y: cardYs[i] }}>
+              <SpotlightCard
+                spotlightColor={`${card.color}40`}
+                className="rounded-2xl h-full"
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.15 }}
+                  className="rounded-2xl p-5 relative overflow-hidden h-full flex flex-col"
+                  style={{
+                    background: "rgba(40, 37, 55, 0.4)",
+                    backdropFilter: "blur(16px)",
+                    border: `1px solid ${card.color}33`,
+                    boxShadow: `0 0 20px ${card.color}22`,
+                  }}
+                >
               {/* Icon + Title ở trên cùng */}
               <div className="flex items-center gap-3 mb-3">
                 <div
@@ -77,10 +100,12 @@ export default function ThreeCardSection() {
               <p className="text-[11px] leading-[1.6] text-[#94A3B8]">
                 {card.description}
               </p>
+                </motion.div>
+              </SpotlightCard>
             </motion.div>
           ))}
         </div>
-      </div>
+      </motion.div>
     </section>
   );
 }

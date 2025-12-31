@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 export default function Header() {
   return (
@@ -50,21 +51,23 @@ export default function Header() {
         </nav>
 
         {/* CTA Button */}
-        <motion.button
-          className="px-6 py-2.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2"
-          style={{
-            background: "linear-gradient(135deg, #8B5CF6, #3B82F6)",
-            boxShadow: "0 0 20px rgba(139, 92, 246, 0.4)",
-          }}
-          whileHover={{
-            scale: 1.02,
-            boxShadow: "0 0 28px rgba(139, 92, 246, 0.6)",
-          }}
-          whileTap={{ scale: 0.98 }}
-        >
-          Launch App
-          <ArrowRight className="w-4 h-4" />
-        </motion.button>
+        <Link href="/TradingDashboard/btc-usdc">
+          <motion.button
+            className="px-6 py-2.5 rounded-lg text-sm font-semibold text-white flex items-center gap-2"
+            style={{
+              background: "linear-gradient(135deg, #8B5CF6, #3B82F6)",
+              boxShadow: "0 0 20px rgba(139, 92, 246, 0.4)",
+            }}
+            whileHover={{
+              scale: 1.02,
+              boxShadow: "0 0 28px rgba(139, 92, 246, 0.6)",
+            }}
+            whileTap={{ scale: 0.98 }}
+          >
+            Launch App
+            <ArrowRight className="w-4 h-4" />
+          </motion.button>
+        </Link>
       </div>
     </motion.header>
   );
