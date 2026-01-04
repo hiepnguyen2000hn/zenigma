@@ -44,16 +44,51 @@ export function useUserProfile() {
     setError(null);
 
     try {
-      console.log('🔄 Fetching user profile from API...');
-      const profileData = await getUserProfile(walletId);
+      console.log('🔄 [useUserProfile] Fetching user profile from API...');
+      const backendProfile = await getUserProfile(walletId);
 
-      console.log('✅ Profile fetched, updating store...');
+      console.log('✅ [useUserProfile] Profile fetched from backend');
+
+      // ✅ Transform backend response to UserProfile format
+      const profileData = {
+        // Backend fields
+        _id: backendProfile._id,
+        wallet_id: walletId,
+        wallet_address: backendProfile.wallet_address || '',
+        address: backendProfile.wallet_address || '',
+        available_balances: backendProfile.available_balances || Array(10).fill('0'),
+        reserved_balances: backendProfile.reserved_balances || Array(10).fill('0'),
+        orders_list: backendProfile.orders_list || Array(4).fill(null),
+        fees: backendProfile.fees?.toString() || '0',
+        nonce: backendProfile.nonce || 0,
+        merkle_root: backendProfile.merkle_root || '',
+        merkle_index: backendProfile.merkle_index || 0,
+        sibling_paths: backendProfile.sibling_paths || [],
+
+        // Detailed balance info (if available from backend)
+        balances: (backendProfile as any).balances || undefined,
+
+        // State management fields
+        current_commitment: backendProfile.current_commitment || '',
+        current_nullifier: backendProfile.current_nullifier || '',
+        pk_root: backendProfile.pk_root,
+        blinder: backendProfile.blinder,
+        is_initialized: backendProfile.is_initialized || false,
+        sync: backendProfile.sync || false,
+        last_tx_hash: backendProfile.last_tx_hash,
+
+        // Timestamps
+        created_at: backendProfile.created_at,
+        updated_at: backendProfile.updated_at,
+      };
+
+      console.log('💾 [useUserProfile] Updating store with transformed profile...');
       updateProfile(profileData);
 
       return profileData;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch profile';
-      console.error('❌ Error fetching profile:', errorMessage);
+      console.error('❌ [useUserProfile] Error fetching profile:', errorMessage);
       setError(errorMessage);
       throw err;
     } finally {

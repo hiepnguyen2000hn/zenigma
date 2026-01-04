@@ -6,6 +6,7 @@ import ConnectButton from './ConnectButton';
 import ChainSelector from './ChainSelector';
 import TokenDisplay from './TokenDisplay';
 import ProofTestModal from './ProofTestModal';
+import DepositModal from './DepositModal';
 import {usePrivy, useSignMessage} from '@privy-io/react-auth';
 import {useWallets} from '@privy-io/react-auth';
 import {useProof, useWalletUpdateProof} from '@/hooks/useProof';
@@ -22,9 +23,16 @@ import {saveAllKeys, signMessageWithSkRoot} from '@/lib/ethers-signer';
 import {extractPrivyWalletId} from '@/lib/wallet-utils';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import {usePathname} from 'next/navigation';
 
-const Header = () => {
+interface HeaderProps {
+    onToggleSidebar?: () => void;
+}
+
+const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
     const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+    const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+    const pathname = usePathname();
     const SPENDER_ADDRESS = DARKPOOL_CORE_ADDRESS;
     const {signPermit2FE} = usePermit2Signature();
     const {exportWallet, user} = usePrivy();
@@ -624,50 +632,60 @@ const Header = () => {
                     <div className="text-2xl font-bold">R</div>
 
                     <nav className="flex items-center space-x-6">
-                        <Link href="/TradingDashboard/btc-usdc" className="text-white font-medium">Trade</Link>
-                        <Link href="/assets" className="text-gray-400 hover:text-white transition-colors">Assets</Link>
-                        <Link href="/orders" className="text-gray-400 hover:text-white transition-colors">Orders</Link>
+                        <Link
+                            href="/TradingDashboard/btc-usdc"
+                            className={`font-medium transition-colors ${
+                                pathname?.startsWith('/TradingDashboard')
+                                    ? 'text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Trade
+                        </Link>
+                        <Link
+                            href="/assets"
+                            className={`font-medium transition-colors ${
+                                pathname?.startsWith('/assets')
+                                    ? 'text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Assets
+                        </Link>
+                        <Link
+                            href="/orders"
+                            className={`font-medium transition-colors ${
+                                pathname?.startsWith('/orders')
+                                    ? 'text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            Orders
+                        </Link>
                     </nav>
                 </div>
 
                 <div className="flex items-center space-x-4">
-                    {/*<button*/}
-                    {/*    onClick={hdlApproveUSDC}*/}
-                    {/*    disabled={isApprovePending || isApproveConfirming || !isConnected}*/}
-                    {/*    className="flex items-center space-x-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"*/}
-                    {/*    title="Approve 2 USDC"*/}
-                    {/*>*/}
-                    {/*    <span>*/}
-                    {/*        {isApprovePending && 'Pending...'}*/}
-                    {/*        {isApproveConfirming && 'Confirming...'}*/}
-                    {/*        {isApproveSuccess && 'Approved ✅'}*/}
-                    {/*        {!isApprovePending && !isApproveConfirming && !isApproveSuccess && 'Approve USDC'}*/}
-                    {/*    </span>*/}
-                    {/*</button>*/}
-                    {/*<button*/}
-                    {/*    onClick={hdlUpdateWallet}*/}
-                    {/*    disabled={isVerifying}*/}
-                    {/*    className="flex items-center space-x-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"*/}
-                    {/*    title="Wallet Update"*/}
-                    {/*>*/}
-                    {/*    <span>{isVerifying ? 'Updating...' : 'Wallet Update'}</span>*/}
-                    {/*</button>*/}
-                    {/*<button*/}
-                    {/*    onClick={hdlInitWalletClientSide}*/}
-                    {/*    disabled={isGenerating || !isConnected}*/}
-                    {/*    className="flex items-center space-x-2 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"*/}
-                    {/*    title="Init Wallet (CLIENT-SIDE - Noir in Browser)"*/}
-                    {/*>*/}
-                    {/*    <span>{isGenerating ? (progress || 'Generating...') : '🌐 Client-Side Init'}</span>*/}
-                    {/*</button>*/}
+                    {/* Deposit Button */}
+                    <button
+                        onClick={() => setIsDepositModalOpen(true)}
+                        className="px-4 py-2 bg-black border border-white text-white rounded-lg font-medium hover:bg-gray-900 transition-colors"
+                    >
+                        Deposit
+                    </button>
+
                     <ChainSelector/>
-                    <ConnectButton onLoginSuccess={hdlInitWalletClientSide}/>
+                    <ConnectButton
+                        onLoginSuccess={() =>hdlInitWalletClientSide}
+                        onToggleSidebar={onToggleSidebar}
+                    />
                 </div>
             </div>
 
-            <ProofTestModal
-                isOpen={isProofModalOpen}
-                onClose={() => setIsProofModalOpen(false)}
+            {/* Deposit Modal */}
+            <DepositModal
+                isOpen={isDepositModalOpen}
+                onClose={() => setIsDepositModalOpen(false)}
             />
         </header>
     );

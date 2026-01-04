@@ -278,22 +278,53 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
                     }
                 }
 
-                // Handle resize
+                // Handle resize - both window resize and container size changes (sidebar toggle)
                 const handleResize = () => {
                     if (chartContainerRef.current && chartRef.current) {
+                        const newWidth = chartContainerRef.current.clientWidth;
+                        const newHeight = chartContainerRef.current.clientHeight;
+
                         chartRef.current.applyOptions({
-                            width: chartContainerRef.current.clientWidth,
-                            height: chartContainerRef.current.clientHeight,
+                            width: newWidth,
+                            height: newHeight,
                         });
+
+                        // Fit content after resize for better UX
+                        chartRef.current.timeScale().fitContent();
                     }
                 };
 
+                // Listen to window resize
                 window.addEventListener('resize', handleResize);
+
+                // ✅ ResizeObserver to detect container size changes (e.g., sidebar toggle)
+                // Use requestAnimationFrame for smooth resize sync with browser paint
+                let rafId: number;
+                const resizeObserver = new ResizeObserver((entries) => {
+                    if (rafId) {
+                        cancelAnimationFrame(rafId);
+                    }
+                    rafId = requestAnimationFrame(() => {
+                        for (const entry of entries) {
+                            if (entry.target === chartContainerRef.current) {
+                                handleResize();
+                            }
+                        }
+                    });
+                });
+
+                if (chartContainerRef.current) {
+                    resizeObserver.observe(chartContainerRef.current);
+                }
 
                 // Cleanup function
                 return () => {
                     mounted = false;
                     window.removeEventListener('resize', handleResize);
+                    if (rafId) {
+                        cancelAnimationFrame(rafId); // ✅ Clear RAF
+                    }
+                    resizeObserver.disconnect(); // ✅ Cleanup ResizeObserver
                     if (chartRef.current) {
                         chartRef.current.remove();
                         chartRef.current = null;

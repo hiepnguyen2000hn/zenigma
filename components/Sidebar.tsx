@@ -4,6 +4,7 @@ import { ArrowLeftRight, Lock } from 'lucide-react';
 import ConnectButton from './ConnectButton';
 import TradingActionButton from './TradingActionButton';
 import TokenSelector, { TokenIconBySymbol } from './TokenSelector';
+import DepositModal from './DepositModal';
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useAtomValue, useSetAtom } from 'jotai';
 import { orderInputAtom, toggleOrderSideAtom, tradingPairAtom, updateOrderAmountAtom, updateLimitPriceAtom } from '@/store/trading';
@@ -30,6 +31,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const updateAmount = useSetAtom(updateOrderAmountAtom);
     const updatePrice = useSetAtom(updateLimitPriceAtom);
     const [selectedToken, setSelectedToken] = useState('USDC');
+    const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const { verifyProof, submitOrder, calculateNewState } = useProof();
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
     const { profile, fetchProfile } = useUserProfile();
@@ -44,6 +46,40 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             return 0;
         }
         return token.index;
+    };
+
+    /**
+     * ✅ Get balance for a token by symbol from profile
+     * Only use profile.balances array, return 0 if not found
+     */
+    const getTokenBalance = (symbol: string): { pnpmavailable: string; reserved: string; total: string } => {
+        console.log(profile, 'profileBalance')
+
+        // ✅ Return 0 if no profile or no balances array
+        if (!profile || !profile.balances) {
+            return { available: '0', reserved: '0', total: '0' };
+        }
+
+        // ✅ Find in profile.balances array by token_symbol
+        const balanceInfo = profile.balances.find(b => b.token_symbol === symbol);
+
+        if (balanceInfo) {
+            return {
+                available: balanceInfo.available || '0',
+                reserved: balanceInfo.reserved || '0',
+                total: balanceInfo.total || '0'
+            };
+        }
+
+        // ✅ If not found in balances array, return 0 (don't fallback)
+        return { available: '0', reserved: '0', total: '0' };
+    };
+
+    /**
+     * ✅ Format balance for display (show raw value from backend)
+     */
+    const formatBalance = (balance: string): string => {
+        return balance || '0';
     };
 
     // ✅ Callback xử lý buy/sell order (tương tự hdlUpdateWallet từ Header.tsx)
@@ -202,16 +238,50 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
         }
     };
 
+    // ✅ Get base and quote symbols from trading pair
+    const baseSymbol = pair.base || 'WBTC';
+    const quoteSymbol = pair.quote || 'USDC';
+
+    // ✅ Get balances for current trading pair
+    const baseBalance = getTokenBalance(baseSymbol);
+    const quoteBalance = getTokenBalance(quoteSymbol);
+
     return (
-        <aside className="w-96 border-r border-gray-800 bg-black">
-            <div className="p-4 border-b border-gray-800">
-                <div className="flex items-center space-x-2 text-xs text-gray-400 mb-4">
-                    <TokenIconBySymbol symbol="WBTC" size="sm" />
-                    <span>WBTC</span>
-                    <TokenIconBySymbol symbol="USDC" size="sm" />
-                    <span>USDC</span>
-                    <span className="ml-auto">--</span>
-                </div>
+        <>
+            <aside className="w-80 border-r border-gray-800 bg-black">
+                <div className="p-4 border-b border-gray-800">
+                    {/* ✅ Token Balances and Deposit in One Row */}
+                    <div className="flex items-start justify-between mb-4">
+                        {/* Column 1: Token Names */}
+                        <div className="flex flex-col space-y-2">
+                            <div className="flex items-center space-x-2 text-gray-400 text-xs">
+                                <TokenIconBySymbol symbol={baseSymbol} size="sm" />
+                                <span>{baseSymbol}</span>
+                            </div>
+                            <div className="flex items-center space-x-2 text-gray-400 text-xs">
+                                <TokenIconBySymbol symbol={quoteSymbol} size="sm" />
+                                <span>{quoteSymbol}</span>
+                            </div>
+                        </div>
+
+                        {/* Column 2: Balances */}
+                        <div className="flex flex-col space-y-2">
+                            <span className="text-white font-medium text-xs">
+                                {formatBalance(baseBalance.available)}
+                            </span>
+                            <span className="text-white font-medium text-xs">
+                                {formatBalance(quoteBalance.available)}
+                            </span>
+                        </div>
+
+                        {/* Column 3: Deposit Button */}
+                        <button
+                            onClick={() => setIsDepositModalOpen(true)}
+                            className="px-4 py-2 bg-black border border-white text-white rounded-lg font-medium text-sm hover:bg-gray-900 transition-colors"
+                        >
+                            Deposit
+                        </button>
+                    </div>
 
                 <div className="flex items-center space-x-2 mb-6">
                     <button
@@ -298,6 +368,13 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 </div>
             </div>
         </aside>
+
+        {/* Deposit Modal */}
+        <DepositModal
+            isOpen={isDepositModalOpen}
+            onClose={() => setIsDepositModalOpen(false)}
+        />
+        </>
     );
 };
 

@@ -5,21 +5,47 @@ import { atomWithStorage } from 'jotai/utils';
 // USER PROFILE STATE
 // ============================================
 
+export interface TokenBalance {
+  token_index: number;
+  token_address: string;
+  token_name: string;
+  token_symbol: string;
+  token_decimals: number;
+  available: string;
+  reserved: string;
+  total: string;
+}
+
 export interface UserProfile {
-  _id: string;
+  // Backend response fields
+  _id?: string;
+  wallet_id?: string;                    // Extracted wallet ID (without did:privy: prefix)
   wallet_address: string;
-  available_balances: string[];  // Array of 10 token balances
-  reserved_balances: string[];   // Array of 10 token balances
-  orders_list: any[];            // Array of 4 orders
+  address?: string;                      // Alias for wallet_address
+  available_balances: string[];          // Array of 10 token balances (raw amounts)
+  reserved_balances: string[];           // Array of 10 token balances (raw amounts)
+  orders_list: any[];                    // Array of 4 orders
   fees: string;
   nonce: number;
   merkle_root: string;
   merkle_index: number;
   sibling_paths: string[];
-  blinder: string;
+
+  // Detailed balance info (from backend)
+  balances?: TokenBalance[];             // Array of balances with token details
+
+  // State management fields
+  current_commitment?: string;
+  current_nullifier?: string;
+  pk_root?: string;
+  blinder?: string;
+  is_initialized?: boolean;              // Whether wallet is initialized
   sync: boolean;
-  created_at: string;
-  updated_at: string;
+  last_tx_hash?: string;
+
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
 }
 
 // Profile atom - store current user profile

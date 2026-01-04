@@ -34,7 +34,9 @@
       "Bash(mkdir:*)",
       "Bash(if [ -d \"circuits\" ])",
       "Bash(then ls -la circuits/)",
-      "Bash(else echo \"No circuits directory\")"
+      "Bash(else echo \"No circuits directory\")",
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

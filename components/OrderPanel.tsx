@@ -1,17 +1,18 @@
 'use client';
 
-import { Filter, Circle, X } from 'lucide-react';
+import { Filter, Circle, X, ChevronDown } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getOrderList, getUserProfile, type Order } from '@/lib/services';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import toast from 'react-hot-toast';
+import { useTokens } from '@/hooks/useTokens';
 
 // Order status mapping (from API string to UI display)
 const ORDER_STATUS = {
@@ -39,10 +40,19 @@ const OrderPanel = () => {
     const { authenticated, user } = usePrivy();
     const { wallets } = useWallets();
     const { getSymbol } = useTokenMapping();
+    const { tokens } = useTokens();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [cancellingOrderIndex, setCancellingOrderIndex] = useState<number | null>(null); // ✅ Track which order is being cancelled
+    const [cancellingOrderIndex, setCancellingOrderIndex] = useState<number | null>(null);
+
+    // Dropdown states
+    const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+    const [isSideDropdownOpen, setIsSideDropdownOpen] = useState(false);
+    const [isTokenDropdownOpen, setIsTokenDropdownOpen] = useState(false);
+    const statusDropdownRef = useRef<HTMLDivElement>(null);
+    const sideDropdownRef = useRef<HTMLDivElement>(null);
+    const tokenDropdownRef = useRef<HTMLDivElement>(null);
 
     // Proof hooks
     const { calculateNewState, cancelOrder } = useProof();
@@ -50,29 +60,48 @@ const OrderPanel = () => {
 
     // ✅ Filter state với default status=["Created"], limit=4
     const [filters, setFiltersState] = useState<OrderFilters>({
-        status: ['Created'],  // ✅ Array
+        status: ['Created'],
         page: 1,
         limit: 4,
     });
 
     /**
      * ✅ Set filter function - update filters và trigger refetch
-     * Có thể set 1 hoặc nhiều filters cùng lúc
-     *
-     * @example
-     * setFilter({ status: [0] }) // Set status = Open only
-     * setFilter({ status: [0, 1] }) // Set status = Open OR Partial
-     * setFilter({ status: ['Created', 'Matching'] }) // Multiple string statuses
-     * setFilter({ side: 0, token: 3 }) // Set side=Buy, token=BTC
-     * setFilter({ from_date: '2025-01-01', to_date: '2025-12-31' })
      */
     const setFilter = (newFilters: Partial<OrderFilters>) => {
         setFiltersState((prev) => ({
             ...prev,
             ...newFilters,
-            page: newFilters.page ?? 1, // Reset to page 1 when filters change (unless explicitly set)
+            page: newFilters.page ?? 1,
         }));
     };
+
+    // Clear all filters
+    const clearFilters = () => {
+        setFiltersState({
+            status: ['Created'],
+            page: 1,
+            limit: 4,
+        });
+    };
+
+    // Close dropdowns when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+                setIsStatusDropdownOpen(false);
+            }
+            if (sideDropdownRef.current && !sideDropdownRef.current.contains(event.target as Node)) {
+                setIsSideDropdownOpen(false);
+            }
+            if (tokenDropdownRef.current && !tokenDropdownRef.current.contains(event.target as Node)) {
+                setIsTokenDropdownOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Handle cancel order
     const handleCancelOrder = async (orderIndex: number) => {
@@ -225,19 +254,135 @@ const OrderPanel = () => {
                     </button>
 
                     <div className="flex items-center space-x-2">
-                        <button className="flex items-center space-x-2 px-3 py-1.5 bg-gray-900 rounded-lg text-sm border border-gray-700">
-                            <Circle className="w-3 h-3 text-green-500 fill-green-500" />
-                            <span className="text-white">Open</span>
-                        </button>
-                        <button className="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white transition-colors">
-                            <Circle className="w-3 h-3" />
-                            <span>Side</span>
-                        </button>
-                        <button className="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white transition-colors">
-                            <Circle className="w-3 h-3" />
-                            <span>Token</span>
-                        </button>
-                        <button className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors">
+                        {/* Status dropdown */}
+                        <div ref={statusDropdownRef} className="relative">
+                            <button
+                                onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                                    filters.status && filters.status.length > 0
+                                        ? 'bg-gray-900 border border-gray-700 text-white'
+                                        : 'text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                <Circle className={`w-3 h-3 ${filters.status && filters.status.length > 0 ? 'text-green-500 fill-green-500' : ''}`} />
+                                <span>Status</span>
+                                <ChevronDown size={14} className={`transition-transform ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isStatusDropdownOpen && (
+                                <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[140px]">
+                                    <button
+                                        onClick={() => {
+                                            setFilter({ status: ['Created'] });
+                                            setIsStatusDropdownOpen(false);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-green-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                                    >
+                                        <Circle className="w-3 h-3 text-green-500 fill-green-500" />
+                                        <span>Open</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setFilter({ status: ['Matching'] });
+                                            setIsStatusDropdownOpen(false);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-yellow-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                                    >
+                                        <Circle className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                                        <span>Pending</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setFilter({ status: ['Cancelled'] });
+                                            setIsStatusDropdownOpen(false);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                                    >
+                                        <Circle className="w-3 h-3 text-gray-500 fill-gray-500" />
+                                        <span>Cancelled</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Side dropdown */}
+                        <div ref={sideDropdownRef} className="relative">
+                            <button
+                                onClick={() => setIsSideDropdownOpen(!isSideDropdownOpen)}
+                                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                                    filters.side !== undefined
+                                        ? 'bg-gray-900 border border-gray-700 text-white'
+                                        : 'text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                <Circle className={`w-3 h-3 ${filters.side !== undefined ? 'text-blue-500 fill-blue-500' : ''}`} />
+                                <span>Side</span>
+                                <ChevronDown size={14} className={`transition-transform ${isSideDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isSideDropdownOpen && (
+                                <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[120px]">
+                                    <button
+                                        onClick={() => {
+                                            setFilter({ side: 0 });
+                                            setIsSideDropdownOpen(false);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-green-500 hover:bg-gray-800 transition-colors"
+                                    >
+                                        Buy
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setFilter({ side: 1 });
+                                            setIsSideDropdownOpen(false);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-800 transition-colors"
+                                    >
+                                        Sell
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Token dropdown */}
+                        <div ref={tokenDropdownRef} className="relative">
+                            <button
+                                onClick={() => setIsTokenDropdownOpen(!isTokenDropdownOpen)}
+                                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                                    filters.token !== undefined
+                                        ? 'bg-gray-900 border border-gray-700 text-white'
+                                        : 'text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                <Circle className={`w-3 h-3 ${filters.token !== undefined ? 'text-purple-500 fill-purple-500' : ''}`} />
+                                <span>Token</span>
+                                <ChevronDown size={14} className={`transition-transform ${isTokenDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isTokenDropdownOpen && (
+                                <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[160px] max-h-64 overflow-y-auto">
+                                    {tokens.map((token) => (
+                                        <button
+                                            key={token.index}
+                                            onClick={() => {
+                                                setFilter({ token: token.index });
+                                                setIsTokenDropdownOpen(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                                        >
+                                            <TokenIconBySymbol symbol={token.symbol} size="sm" />
+                                            <span>{token.symbol}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Clear button */}
+                        <button
+                            onClick={clearFilters}
+                            className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+                        >
                             Clear
                         </button>
                     </div>

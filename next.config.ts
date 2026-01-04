@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // ⚠️ Disable React StrictMode in development (callbacks won't run twice)
+  // Note: StrictMode helps catch bugs - only disable if necessary
+  reactStrictMode: false,
+
   // Use empty turbopack config to silence the warning and continue using webpack
   turbopack: {},
   typescript: {

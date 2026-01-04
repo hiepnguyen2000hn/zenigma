@@ -188,7 +188,9 @@ export async function login(address: string, signature: string): Promise<{ acces
 export async function getUserProfile(wallet_id: string): Promise<UserProfile> {
   // Replace :id in endpoint with wallet_id
   const endpoint = API_ENDPOINTS.USER.PROFILE.replace(':id', wallet_id);
+
   const response = await apiClient.get(endpoint);
+
   return response.data;
 }
 

@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import Stepper, { Step } from './Stepper';
-import { useUSDC } from '@/hooks/useUSDC';
-import { DARKPOOL_CORE_ADDRESS, MOCK_USDC_ADDRESS, PERMIT2_ADDRESS } from '@/lib/constants';
+import { useERC20Token } from '@/hooks/useERC20Token';
+import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
+import { DARKPOOL_CORE_ADDRESS, PERMIT2_ADDRESS, getAvailableERC20Tokens } from '@/lib/constants';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokens } from '@/hooks/useTokens';
 import { type Token, getUserProfile } from '@/lib/services';
@@ -21,6 +22,9 @@ import { useSwitchChain, useAccount, useWriteContract, useWaitForTransactionRece
 import { waitForTransactionReceipt } from 'wagmi/actions';
 import { WETH_ADDRESSES } from '@/lib/constants';
 import { WETH_ABI } from '@/lib/abis/weth';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { chainMetadata } from '@/config';
+import Image from 'next/image';
 
 interface DepositModalProps {
     isOpen: boolean;
@@ -36,7 +40,7 @@ const NETWORKS = [
     { value: 'optimism', label: 'Optimism', chainId: 10, nativeSymbol: 'ETH' },
 ];
 
-type TokenType = 'native' | 'usdc';
+type TokenType = 'native' | string; // 'native' or ERC20 token symbol (e.g., 'USDC', 'USDT')
 
 const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     // Step 1: Chain selection
@@ -44,6 +48,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
     // Step 2: Token type selection
     const [selectedTokenType, setSelectedTokenType] = useState<TokenType | null>(null);
+
+    // Get available ERC20 tokens from config
+    const availableERC20Tokens = getAvailableERC20Tokens();
 
     // Step 3: Amount
     const [amount, setAmount] = useState('');
@@ -99,10 +106,20 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
     const { signPermit2FE } = usePermit2Signature();
 
-    // USDC hook for balance and approve (với chainId của chain đã chọn)
+    // User profile hook for refetching after deposit
+    const { refetchProfile } = useUserProfile();
+
+    // ✅ NEW: Load balances for ALL tokens at once
+    const { balances: allBalances, isLoading: isLoadingAllBalances } = useAllTokenBalances();
+
+    // Determine which ERC20 token to use (default to USDC if no ERC20 token selected)
+    const selectedERC20Token = selectedTokenType && selectedTokenType !== 'native'
+        ? selectedTokenType
+        : 'USDC';
+
+    // Generic ERC20 token hook - works with any token from config!
+    // ⚠️ Still need this for approve/allowance functionality
     const {
-        balance: usdcBalance,
-        nativeBalance,
         isConnected,
         approve,
         isApprovePending,
@@ -110,9 +127,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
         isApproveSuccess,
         allowance,
         refetchAllowance,
-        isLoadingBalance,
-        getBalance
-    } = useUSDC(PERMIT2_ADDRESS);
+        tokenConfig: selectedTokenConfig,
+    } = useERC20Token(selectedERC20Token, PERMIT2_ADDRESS);
 
     // ✅ Don't render if modal is closed
     if (!isOpen) return null;
@@ -167,11 +183,11 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             }
 
             // ✅ Route to correct flow based on token type
-            if (selectedTokenType === 'usdc') {
+            if (selectedTokenType !== 'native') {
                 // ============================================
-                // USDC DEPOSIT FLOW (EXISTING LOGIC)
+                // ERC20 TOKEN DEPOSIT FLOW (USDC, USDT, DAI, etc.)
                 // ============================================
-                console.log('💰 Current USDC Balance:', usdcBalance);
+                // console.log(`💰 Current ${selectedTokenType} Balance:`, erc20Balance);
                 console.log('📊 Current allowance:', allowance);
 
                 const requiredAmount = parseFloat(amount);
@@ -179,15 +195,15 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
                 // Step 1: Check and approve if needed
                 if (currentAllowance < requiredAmount) {
-                    console.log(`⚠️ Allowance insufficient! Current: ${currentAllowance} USDC, Required: ${requiredAmount} USDC`);
-                    console.log('🔐 Step 1: Approving USDC to spender:', PERMIT2_ADDRESS);
+                    console.log(`⚠️ Allowance insufficient! Current: ${currentAllowance} ${selectedTokenType}, Required: ${requiredAmount} ${selectedTokenType}`);
+                    console.log(`🔐 Step 1: Approving ${selectedTokenType} to spender:`, PERMIT2_ADDRESS);
 
-                    setProcessingStep('Approving USDC...');
+                    setProcessingStep(`Approving ${selectedTokenType}...`);
                     await approve(PERMIT2_ADDRESS, amount);
 
                     console.log('✅ Approval transaction confirmed!');
                 } else {
-                    console.log(`✅ Allowance already sufficient! Current: ${currentAllowance} USDC, Required: ${requiredAmount} USDC`);
+                    console.log(`✅ Allowance already sufficient! Current: ${currentAllowance} ${selectedTokenType}, Required: ${requiredAmount} ${selectedTokenType}`);
                 }
 
                 // Step 2: Get user profile and old state
@@ -207,22 +223,25 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     blinder: profile.blinder,
                 };
 
-                // Get USDC token info from API
-                const usdcToken = tokens.find(t => t.symbol === 'USDC');
-                if (!usdcToken) {
-                    toast.error('USDC token not found in system');
+                // Get ERC20 token info from API (match by symbol)
+                const tokenFromAPI = tokens.find(t => t.symbol === selectedTokenType);
+                if (!tokenFromAPI) {
+                    toast.error(`${selectedTokenType} token not found in system`);
                     setIsProcessing(false);
                     return;
                 }
 
+                // Use selectedTokenConfig for address and decimals (from constants)
+                const { address: tokenAddress, decimals: tokenDecimals } = selectedTokenConfig!;
+
                 // Step 3: Sign Permit2
                 setProcessingStep('Signing Permit2...');
                 console.log('🔍 Step 3: Signing Permit2...');
-                console.log(`  - Token: USDC (${usdcToken.address})`);
-                console.log(`  - Amount: ${amount} (${parseUnits(amount, usdcToken.decimals)} wei)`);
+                console.log(`  - Token: ${selectedTokenType} (${tokenAddress})`);
+                console.log(`  - Amount: ${amount} (${parseUnits(amount, tokenDecimals)} base units)`);
                 const permit2Data = await signPermit2FE({
-                    token: usdcToken.address,
-                    amount: parseUnits(amount, usdcToken.decimals),
+                    token: tokenAddress,
+                    amount: parseUnits(amount, tokenDecimals),
                     spender: DARKPOOL_CORE_ADDRESS,
                 });
                 console.log('✅ Permit2 signed:', {
@@ -232,13 +251,13 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 });
 
                 // Step 4: Create TransferAction
-                // ⚠️ IMPORTANT: amount must be in smallest unit (Wei for ETH, base units for USDC)
-                const amountInBaseUnits = parseUnits(amount, usdcToken.decimals).toString();
+                // ⚠️ IMPORTANT: amount must be in smallest unit (base units for ERC20)
+                const amountInBaseUnits = parseUnits(amount, tokenDecimals).toString();
                 const action: TransferAction = {
                     type: 'transfer',
                     direction: 0,
-                    token_index: usdcToken.index,
-                    amount: amountInBaseUnits, // ✅ String of integer (e.g. "100000" for 0.1 USDC with 6 decimals)
+                    token_index: tokenFromAPI.index, // Use index from API
+                    amount: amount, // ✅ String of integer (base units)
                     permit2Nonce: permit2Data.permit2Nonce.toString(),
                     permit2Deadline: permit2Data.permit2Deadline.toString(),
                     permit2Signature: permit2Data.permit2Signature
@@ -298,7 +317,14 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     console.log('✅ Deposit completed successfully!', verifyResult);
                     setProcessingStep('Deposit completed!');
                     if (verifyResult.verified) {
-                        toast.success(`Deposit verified successfully!\nAmount: ${amount} USDC`, {
+                        // ✅ Refetch profile to update balances in sidebar
+                        if (user?.id) {
+                            const walletId = extractPrivyWalletId(user.id);
+                            await refetchProfile(walletId);
+                            console.log('✅ Profile refreshed with new balances');
+                        }
+
+                        toast.success(`Deposit verified successfully!\nAmount: ${amount} ${selectedTokenType}`, {
                             duration: 5000,
                         });
                     } else {
@@ -499,6 +525,13 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     console.log('✅ Native token deposit completed successfully!', verifyResultNative);
                     setProcessingStep('Deposit completed!');
                     if (verifyResultNative.verified) {
+                        // ✅ Refetch profile to update balances in sidebar
+                        if (user?.id) {
+                            const walletId = extractPrivyWalletId(user.id);
+                            await refetchProfile(walletId);
+                            console.log('✅ Profile refreshed with new balances');
+                        }
+
                         toast.success(`Deposit verified successfully!\nAmount: ${amount} ${NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol}`, {
                             duration: 5000,
                         });
@@ -586,16 +619,17 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
                 // Check if amount exceeds balance
                 const enteredAmount = parseFloat(amount);
-                if (selectedTokenType === 'usdc') {
-                    const availableBalance = parseFloat(usdcBalance);
+                if (selectedTokenType !== 'native') {
+                    // ERC20 token balance check
+                    const availableBalance = parseFloat(allBalances[selectedTokenType] || '0');
                     if (enteredAmount > availableBalance) {
                         return {
                             canProceed: false,
-                            errorMessage: `Insufficient balance. You have ${availableBalance} USDC`
+                            errorMessage: `Insufficient balance. You have ${availableBalance} ${selectedTokenType}`
                         };
                     }
                 } else if (selectedTokenType === 'native') {
-                    const availableBalance = parseFloat(nativeBalance);
+                    const availableBalance = parseFloat(allBalances.native || '0');
                     if (enteredAmount > availableBalance) {
                         return {
                             canProceed: false,
@@ -678,6 +712,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                     {NETWORKS.map((network) => {
                                         const isCurrentChain = currentChain?.id === network.chainId;
                                         const isSelected = selectedChainId === network.chainId;
+                                        const chainInfo = chainMetadata[network.chainId];
 
                                         return (
                                             <button
@@ -690,9 +725,21 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                                 }`}
                                             >
                                                 <div className="flex items-center space-x-3">
-                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500/20 to-blue-500/20 flex items-center justify-center">
-                                                        <span className="text-lg">{network.value === 'sepolia' ? '🔧' : network.value === 'ethereum' ? '⚡' : network.value === 'arbitrum' ? '🔷' : '🔴'}</span>
-                                                    </div>
+                                                    {chainInfo?.imageUrl ? (
+                                                        <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center p-1">
+                                                            <Image
+                                                                src={chainInfo.imageUrl}
+                                                                alt={network.label}
+                                                                width={40}
+                                                                height={40}
+                                                                className="w-full h-full object-contain"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500/20 to-blue-500/20 flex items-center justify-center">
+                                                            <span className="text-lg">?</span>
+                                                        </div>
+                                                    )}
                                                     <div className="text-left">
                                                         <div className="text-white font-semibold text-sm flex items-center gap-2">
                                                             {network.label}
@@ -746,9 +793,21 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center space-x-3">
-                                                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center">
-                                                    <span className="text-2xl">💎</span>
-                                                </div>
+                                                {chainMetadata[selectedChainId]?.imageUrl ? (
+                                                    <div className="w-11 h-11 rounded-full overflow-hidden bg-white flex items-center justify-center p-1.5">
+                                                        <Image
+                                                            src={chainMetadata[selectedChainId].imageUrl}
+                                                            alt={NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol || 'Native'}
+                                                            width={44}
+                                                            height={44}
+                                                            className="w-full h-full object-contain"
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center">
+                                                        <span className="text-2xl">💎</span>
+                                                    </div>
+                                                )}
                                                 <div className="text-left">
                                                     <div className="text-white font-semibold text-sm">
                                                         {NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol}
@@ -759,39 +818,42 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                             <div className="text-right">
                                                 <div className="text-gray-500 text-xs mb-0.5">Balance</div>
                                                 <div className="text-white/90 font-medium text-sm">
-                                                    {isLoadingBalance ? '...' : nativeBalance}
+                                                    {isLoadingAllBalances ? '...' : allBalances.native || '0'}
                                                 </div>
                                             </div>
                                         </div>
                                     </button>
 
-                                    {/* USDC */}
-                                    <button
-                                        onClick={() => setSelectedTokenType('usdc')}
-                                        className={`group w-full p-4 rounded-xl border-2 transition-all duration-200 ${
-                                            selectedTokenType === 'usdc'
-                                                ? 'border-teal-500 bg-teal-500/10 shadow-lg shadow-teal-500/20'
-                                                : 'border-gray-700/70 bg-gray-800/30 hover:border-teal-500/50 hover:bg-gray-800/50'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center space-x-3">
-                                                <div className="w-11 h-11 rounded-full flex items-center justify-center">
-                                                    <TokenIconBySymbol symbol="USDC" size="md" />
+                                    {/* ERC20 Tokens - Auto-generated from config */}
+                                    {availableERC20Tokens.map((token) => (
+                                        <button
+                                            key={token.symbol}
+                                            onClick={() => setSelectedTokenType(token.symbol)}
+                                            className={`group w-full p-4 rounded-xl border-2 transition-all duration-200 ${
+                                                selectedTokenType === token.symbol
+                                                    ? 'border-teal-500 bg-teal-500/10 shadow-lg shadow-teal-500/20'
+                                                    : 'border-gray-700/70 bg-gray-800/30 hover:border-teal-500/50 hover:bg-gray-800/50'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="w-11 h-11 rounded-full flex items-center justify-center">
+                                                        <TokenIconBySymbol symbol={token.symbol} size="lg" />
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <div className="text-white font-semibold text-sm">{token.symbol}</div>
+                                                        <div className="text-gray-400 text-xs">{token.name}</div>
+                                                    </div>
                                                 </div>
-                                                <div className="text-left">
-                                                    <div className="text-white font-semibold text-sm">USDC</div>
-                                                    <div className="text-gray-400 text-xs">USD Coin</div>
+                                                <div className="text-right">
+                                                    <div className="text-gray-500 text-xs mb-0.5">Balance</div>
+                                                    <div className="text-white/90 font-medium text-sm">
+                                                        {isLoadingAllBalances ? '...' : allBalances[token.symbol] || '0'}
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="text-right">
-                                                <div className="text-gray-500 text-xs mb-0.5">Balance</div>
-                                                <div className="text-white/90 font-medium text-sm">
-                                                    {isLoadingBalance ? '...' : usdcBalance}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </button>
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         </Step>
@@ -807,16 +869,28 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                         <div className="flex items-center space-x-3">
                                             <div className="w-10 h-10 rounded-full flex items-center justify-center">
                                                 {selectedTokenType === 'native' ? (
-                                                    <span className="text-xl">💎</span>
+                                                    chainMetadata[selectedChainId]?.imageUrl ? (
+                                                        <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center p-1.5">
+                                                            <Image
+                                                                src={chainMetadata[selectedChainId].imageUrl}
+                                                                alt={NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol || 'Native'}
+                                                                width={40}
+                                                                height={40}
+                                                                className="w-full h-full object-contain"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xl">💎</span>
+                                                    )
                                                 ) : (
-                                                    <TokenIconBySymbol symbol="USDC" size="md" />
+                                                    <TokenIconBySymbol symbol={selectedTokenType as string} size="md" />
                                                 )}
                                             </div>
                                             <div>
                                                 <div className="text-white font-semibold text-sm">
                                                     {selectedTokenType === 'native'
                                                         ? NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol
-                                                        : 'USDC'}
+                                                        : selectedTokenType}
                                                 </div>
                                                 <div className="text-gray-400 text-xs">
                                                     on {NETWORKS.find(n => n.chainId === selectedChainId)?.label}
@@ -841,7 +915,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                             <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-xs">
                                                 {selectedTokenType === 'native'
                                                     ? NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol
-                                                    : 'USDC'}
+                                                    : selectedTokenType}
                                             </div>
                                         </div>
 
@@ -849,11 +923,13 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                             {/* Available Balance */}
                                             <div className="text-xs text-gray-500">
                                                 Available: <span className="text-gray-400 font-medium">
-                                                    {selectedTokenType === 'usdc' ? usdcBalance : nativeBalance}
+                                                    {selectedTokenType === 'native'
+                                                        ? allBalances.native || '0'
+                                                        : allBalances[selectedTokenType as string] || '0'}
                                                     {' '}
                                                     {selectedTokenType === 'native'
                                                         ? NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol
-                                                        : 'USDC'}
+                                                        : selectedTokenType}
                                                 </span>
                                             </div>
 
@@ -892,15 +968,27 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                         <div className="flex items-center space-x-2">
                                             <div className="w-8 h-8 rounded-full flex items-center justify-center">
                                                 {selectedTokenType === 'native' ? (
-                                                    <span className="text-lg">💎</span>
+                                                    chainMetadata[selectedChainId]?.imageUrl ? (
+                                                        <div className="w-8 h-8 rounded-full overflow-hidden bg-white flex items-center justify-center p-1">
+                                                            <Image
+                                                                src={chainMetadata[selectedChainId].imageUrl}
+                                                                alt={NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol || 'Native'}
+                                                                width={32}
+                                                                height={32}
+                                                                className="w-full h-full object-contain"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-lg">💎</span>
+                                                    )
                                                 ) : (
-                                                    <TokenIconBySymbol symbol="USDC" size="sm" />
+                                                    <TokenIconBySymbol symbol={selectedTokenType as string} size="sm" />
                                                 )}
                                             </div>
                                             <span className="text-white font-semibold">
                                                 {selectedTokenType === 'native'
                                                     ? NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol
-                                                    : 'USDC'}
+                                                    : selectedTokenType}
                                             </span>
                                         </div>
                                     </div>
@@ -910,7 +998,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                         <span className="text-teal-400 font-bold text-xl">
                                             {amount} {selectedTokenType === 'native'
                                                 ? NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol
-                                                : 'USDC'}
+                                                : selectedTokenType}
                                         </span>
                                     </div>
                                 </div>

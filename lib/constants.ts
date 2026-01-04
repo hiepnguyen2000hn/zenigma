@@ -17,6 +17,58 @@ export const DARKPOOL_CORE_ADDRESS = process.env.NEXT_PUBLIC_DARKPOOL_CORE_ADDRE
 // Mock USDC contract address
 export const MOCK_USDC_ADDRESS = process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS as `0x${string}`;
 
+// Mock USDT contract address
+export const MOCK_USDT_ADDRESS = process.env.NEXT_PUBLIC_MOCK_USDT_ADDRESS as `0x${string}`;
+
+// ============================================
+// ERC20 TOKEN CONFIGURATION
+// ============================================
+
+export interface ERC20TokenConfig {
+  symbol: string;
+  name: string;
+  address: `0x${string}`;
+  decimals: number;
+  icon?: string;
+}
+
+// ERC20 Tokens configuration - Easy to extend for new tokens!
+// To add new token: Just add env var and config here, no need to modify other files!
+export const ERC20_TOKENS: Record<string, ERC20TokenConfig> = {
+  USDC: {
+    symbol: 'USDC',
+    name: 'USD Coin',
+    address: MOCK_USDC_ADDRESS,
+    decimals: 6,
+    icon: '💵',
+  },
+  USDT: {
+    symbol: 'USDT',
+    name: 'Tether USD',
+    address: MOCK_USDT_ADDRESS,
+    decimals: 6,
+    icon: '💲',
+  },
+  // Easy to add more tokens:
+  // DAI: {
+  //   symbol: 'DAI',
+  //   name: 'Dai Stablecoin',
+  //   address: process.env.NEXT_PUBLIC_MOCK_DAI_ADDRESS as `0x${string}`,
+  //   decimals: 18,
+  //   icon: '🪙',
+  // },
+};
+
+// Helper to get token config by symbol
+export const getTokenConfig = (symbol: string): ERC20TokenConfig | undefined => {
+  return ERC20_TOKENS[symbol.toUpperCase()];
+};
+
+// Helper to get all available ERC20 tokens
+export const getAvailableERC20Tokens = (): ERC20TokenConfig[] => {
+  return Object.values(ERC20_TOKENS);
+};
+
 // WETH contract addresses by chain
 export const WETH_ADDRESSES: Record<number, `0x${string}`> = {
   11155111: '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9', // Sepolia

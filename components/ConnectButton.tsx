@@ -1,33 +1,142 @@
 "use client";
 
 import { usePrivy, useLogin, useLogout } from "@privy-io/react-auth";
-import { Wallet, LogOut, DollarSign, ChevronDown, ArrowDownToLine } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
-import { balancesAtom, updateUserProfileAtom, type UserProfile } from "@/store/trading";
+import { Wallet, LogOut } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { auth } from "@/lib/api";
-import { getUserProfile } from "@/lib/services";
 import { extractPrivyWalletId } from "@/lib/wallet-utils";
-import DepositModal from "@/components/DepositModal";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import toast from "react-hot-toast";
 
 interface ConnectButtonProps {
     className?: string;
     onClick?: () => void;
     onLoginSuccess?: () => void | Promise<void>;
+    onToggleSidebar?: () => void;
 }
 
-const ConnectButton = ({ className = "", onClick, onLoginSuccess }: ConnectButtonProps) => {
+const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSidebar }: ConnectButtonProps) => {
     const { authenticated, user, getAccessToken } = usePrivy();
     const { logout } = useLogout();
-    const balances = useAtomValue(balancesAtom);
-    const updateUserProfile = useSetAtom(updateUserProfileAtom);
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // ✅ Use profile hook for state management
+    const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
+
+    // ✅ Prevent duplicate onComplete calls
+    const isProcessingLogin = useRef(false);
+
+    /**
+     * Load user profile from backend and save to store
+     *
+     * Validates user connection before fetching profile:
+     * - User is authenticated
+     * - User object exists with valid ID
+     * - Access token is available
+     *
+     * @returns Promise<boolean> - true if profile loaded successfully, false otherwise
+     */
+    const loadUserProfile = async (userFromCallback: any): Promise<boolean> => {
+        try {
+            console.log("🔍 [loadUserProfile] Starting profile load...");
+
+            // ✅ Step 1: Validate user object
+            if (!userFromCallback || !userFromCallback.user.id) {
+                console.error("❌ [loadUserProfile] Invalid user object:", userFromCallback);
+                return false;
+            }
+
+            console.log("✅ [loadUserProfile] User object valid:", {
+                userId: userFromCallback.id,
+                hasWallet: !!userFromCallback.wallet,
+                walletAddress: userFromCallback.wallet?.address
+            });
+
+            // ✅ Step 2: Validate access token exists
+            // const accessToken = auth.getToken();
+            // if (!accessToken) {
+            //     console.error("❌ [loadUserProfile] No access token found");
+            //     toast.error("Authentication token missing");
+            //     return false;
+            // }
+
+            console.log("✅ [loadUserProfile] Access token exists");
+
+            // ✅ Step 3: Extract wallet ID
+            const walletId = extractPrivyWalletId(userFromCallback.user.id);
+            if (!walletId || walletId === userFromCallback.user.id) {
+                // If walletId same as original, prefix wasn't removed - might be invalid format
+                console.error("❌ [loadUserProfile] Failed to extract wallet ID:", {
+                    original: userFromCallback.id,
+                    extracted: walletId
+                });
+                toast.error("Invalid wallet ID format");
+                return false;
+            }
+
+            console.log("✅ [loadUserProfile] Wallet ID extracted:", walletId);
+
+            // ✅ Step 4: Fetch profile using hook (handles store update automatically)
+            console.log("📡 [loadUserProfile] Fetching profile via useUserProfile hook...");
+            const profileData = await fetchProfile(walletId);
+
+            console.log("✅ [loadUserProfile] Profile loaded successfully!");
+
+            // ✅ Step 5: Check if wallet needs initialization
+            if (profileData.is_initialized) {
+                console.log("✅ [loadUserProfile] User already initialized");
+                return true;
+            } else {
+                console.log("⚠️ [loadUserProfile] User not initialized yet");
+
+                // Call initialization callback if provided
+                if (onLoginSuccess) {
+                    console.log("🚀 [loadUserProfile] Calling onLoginSuccess to initialize wallet...");
+                    await onLoginSuccess();
+                }
+
+                return true;
+            }
+
+        } catch (error) {
+            console.error("❌ [loadUserProfile] Error loading profile:", error);
+
+            // Specific error messages
+            if (error instanceof Error) {
+                if (error.message.includes('401')) {
+                    toast.error("Authentication failed. Please login again.");
+                } else if (error.message.includes('404')) {
+                    toast.error("User profile not found");
+                } else {
+                    toast.error(`Failed to load profile: ${error.message}`);
+                }
+            } else {
+                toast.error("Failed to load profile");
+            }
+
+            // If profile load fails and user is not initialized, try to initialize
+            if (onLoginSuccess) {
+                console.log("🚀 [loadUserProfile] Calling onLoginSuccess as fallback...");
+                try {
+                    await onLoginSuccess();
+                } catch (initError) {
+                    console.error("❌ [loadUserProfile] Initialization also failed:", initError);
+                }
+            }
+
+            return false;
+        }
+    };
 
     const { login } = useLogin({
         onComplete: async (user, isNewUser, wasAlreadyAuthenticated, loginMethod, loginAccount) => {
+            // ✅ Skip if already processing
+            if (isProcessingLogin.current) {
+                console.log("⏭️ Skipping duplicate onComplete call");
+                return;
+            }
+
+            isProcessingLogin.current = true;
+
             try {
                 console.log("Login completed:", {
                     user,
@@ -61,7 +170,6 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess }: ConnectButto
                         }),
                     }
                 );
-
                 if (!response.ok) {
                     const errorData = await response.text();
                     console.error("Backend login failed:", response.status, errorData);
@@ -75,76 +183,21 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess }: ConnectButto
                 // API trả về: { access_token: "...", user: {...} }
                 if (data.access_token) {
                     await auth.setTokens(data.access_token, data.refresh_token);
-                    console.log("Backend tokens saved successfully to cookies");
+                    console.log("✅ Backend tokens saved successfully to cookies");
 
-                    // ✅ Step 3: Call getUserProfile to check is_initialized
-                    try {
-                        console.log("🔍 Step 3: Calling getUserProfile to check is_initialized...");
-                        const walletId = extractPrivyWalletId(user.id);
-                        console.log("  - Wallet ID:", walletId);
-
-                        const profile = await getUserProfile(walletId);
-                        console.log("✅ Profile loaded:", {
-                            wallet_id: walletId,
-                            address: profile.wallet_address,
-                            is_initialized: profile.is_initialized,
-                            merkle_index: profile.merkle_index,
-                            available_balances: profile.available_balances?.slice(0, 3),
-                        });
-
-                        // ✅ Step 4: Save profile to store
-                        console.log("💾 Step 4: Saving profile to store...");
-                        const profileData: UserProfile = {
-                            wallet_id: walletId,
-                            address: profile.wallet_address || '',
-                            current_commitment: profile.current_commitment || '',
-                            current_nullifier: profile.current_nullifier || '',
-                            merkle_index: profile.merkle_index || 0,
-                            merkle_root: profile.merkle_root || '',
-                            available_balances: profile.available_balances || Array(10).fill('0'),
-                            reserved_balances: profile.reserved_balances || Array(10).fill('0'),
-                            orders_list: profile.orders_list || Array(4).fill(null),
-                            fees: profile.fees?.toString() || '0',
-                            nonce: profile.nonce || 0,
-                            is_initialized: profile.is_initialized || false,
-                            sync: profile.sync || false,
-                            sibling_paths: profile.sibling_paths || [],
-                            pk_root: profile.pk_root,
-                            blinder: profile.blinder,
-                            last_tx_hash: profile.last_tx_hash,
-                        };
-
-                        updateUserProfile(profileData);
-                        console.log("✅ Profile saved to store successfully!");
-                        toast.success("Profile loaded!");
-
-                        // ✅ Step 5: Check is_initialized
-                        if (profile.is_initialized) {
-                            console.log("✅ User already initialized");
-                            console.log("⏭️ Skipping wallet initialization");
-                        } else {
-                            console.log("⚠️ User not initialized yet (is_initialized = false)");
-                            console.log("🚀 Calling onLoginSuccess to initialize wallet...");
-
-                            if (onLoginSuccess) {
-                                await onLoginSuccess();
-                            }
-                        }
-                    } catch (profileError) {
-                        console.error("❌ Error fetching profile:", profileError);
-                        toast.error("Failed to load profile");
-                        console.log("🚀 Calling onLoginSuccess to initialize wallet (fallback)...");
-
-                        // Fallback: if profile fetch fails, try to initialize
-                        if (onLoginSuccess) {
-                            await onLoginSuccess();
-                        }
-                    }
+                    // ✅ Step 3: Load user profile using dedicated function
+                    await loadUserProfile(user);
                 } else {
-                    console.error("No access_token in backend response");
+                    console.error("❌ No access_token in backend response");
+                    toast.error("Login failed: No access token received");
                 }
             } catch (error) {
                 console.error("Error in login complete handler:", error);
+            } finally {
+                // ✅ Reset flag after processing (success or error)
+                setTimeout(() => {
+                    isProcessingLogin.current = false;
+                }, 1000); // 1s delay to prevent rapid duplicate calls
             }
         },
         onError: (error) => {
@@ -156,32 +209,12 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess }: ConnectButto
         console.log("ConnectButton Debug:", { authenticated, user });
     }, [authenticated, user]);
 
-    // Close dropdown when click outside
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsDropdownOpen(false);
-            }
-        };
-
-        if (isDropdownOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isDropdownOpen]);
-
     const handleClick = async() => {
         if (onClick) {
             onClick();
         }
         if (!authenticated) {
             login();
-        } else {
-            // Toggle dropdown khi đã authenticated
-            setIsDropdownOpen(!isDropdownOpen);
         }
     };
 
@@ -200,115 +233,39 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess }: ConnectButto
         return `${addr.slice(0, 4)}....${addr.slice(-4)}`;
     };
 
-    const formatBalance = (balance: number) => {
-        return balance.toLocaleString('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 6,
-        });
-    };
-
     const userAddress = user?.wallet?.address;
-
-    // Calculate total portfolio value
-    const totalValue = balances.reduce((sum, b) => sum + b.usdValue, 0);
 
     if (authenticated && userAddress) {
         return (
-            <div className="relative" ref={dropdownRef}>
+            <div className="flex items-center space-x-3">
+                {/* Wallet Address Display - Click to toggle sidebar */}
                 <button
-                    onClick={handleClick}
-                    className={`flex items-center space-x-2 px-4 py-2 bg-white text-black rounded-lg font-medium hover:bg-gray-100 transition-colors ${className}`}
+                    onClick={onToggleSidebar}
+                    className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors"
                 >
-                    <Wallet size={18} />
-                    <span className="text-sm">{formatAddress(userAddress)}</span>
-                    <ChevronDown size={16} className={`transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                    <Wallet size={16} className="text-gray-400" />
+                    <span className="text-sm text-white font-medium">{formatAddress(userAddress)}</span>
                 </button>
 
-                {/* Dropdown Menu */}
-                {isDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-72 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
-                        {/* Balance Section */}
-                        <div className="p-4 border-b border-gray-700">
-                            <div className="flex items-center space-x-2 text-gray-400 text-xs mb-2">
-                                <DollarSign size={14} />
-                                <span>Portfolio Balance</span>
-                            </div>
-                            <div className="text-white text-2xl font-bold mb-3">
-                                ${formatBalance(totalValue)}
-                            </div>
-
-                            {/* Token Balances */}
-                            <div className="space-y-2 mb-4">
-                                {balances.map((balance, index) => (
-                                    balance.balance > 0 && (
-                                        <div key={index} className="flex justify-between items-center text-sm">
-                                            <span className="text-gray-400">{balance.token}</span>
-                                            <div className="text-right">
-                                                <div className="text-white font-medium">
-                                                    {formatBalance(balance.balance)}
-                                                </div>
-                                                <div className="text-gray-500 text-xs">
-                                                    ${formatBalance(balance.usdValue)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )
-                                ))}
-                                {balances.length === 0 && (
-                                    <div className="text-gray-500 text-sm text-center py-2">
-                                        No balances yet
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Deposit Button */}
-                            <button
-                                onClick={() => {
-                                    setIsDepositModalOpen(true);
-                                    setIsDropdownOpen(false);
-                                }}
-                                className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                            >
-                                <ArrowDownToLine size={16} />
-                                <span>Deposit</span>
-                            </button>
-                        </div>
-
-                        {/* Logout Button */}
-                        <button
-                            onClick={handleLogout}
-                            className="w-full px-4 py-3 flex items-center space-x-2 text-red-400 hover:bg-gray-800 transition-colors"
-                        >
-                            <LogOut size={16} />
-                            <span className="text-sm font-medium">Logout</span>
-                        </button>
-                    </div>
-                )}
-
-                {/* Deposit Modal */}
-                <DepositModal
-                    isOpen={isDepositModalOpen}
-                    onClose={() => setIsDepositModalOpen(false)}
-                />
+                {/* Logout Button */}
+                <button
+                    onClick={handleLogout}
+                    className="px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg transition-colors flex items-center space-x-2 text-gray-300 hover:text-white"
+                >
+                    <LogOut size={16} />
+                    <span className="text-sm font-medium">Logout</span>
+                </button>
             </div>
         );
     }
 
     return (
-        <>
-            <button
-                onClick={handleClick}
-                className={`px-6 py-2 bg-white text-black rounded-lg font-medium hover:bg-gray-100 transition-colors ${className}`}
-            >
-                Connect Wallet
-            </button>
-
-            {/* Deposit Modal */}
-            <DepositModal
-                isOpen={isDepositModalOpen}
-                onClose={() => setIsDepositModalOpen(false)}
-            />
-        </>
+        <button
+            onClick={handleClick}
+            className={`px-6 py-2 bg-white text-black rounded-lg font-medium hover:bg-gray-100 transition-colors ${className}`}
+        >
+            Connect Wallet
+        </button>
     );
 };
 
