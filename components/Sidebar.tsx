@@ -15,6 +15,7 @@ import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import toast from 'react-hot-toast';
 
 interface SidebarProps {
     selectedCrypto: string;
@@ -90,13 +91,13 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             // Get wallet address
             const walletAddress = wallets.find(wallet => wallet.connectorType === 'embedded')?.address;
             if (!walletAddress) {
-                alert('Please connect wallet first!');
+                toast.error('Please connect wallet first!');
                 return;
             }
 
             // Get Privy user ID
             if (!user?.id) {
-                alert('Please authenticate with Privy first!');
+                toast.error('Please authenticate with Privy first!');
                 return;
             }
 
@@ -121,7 +122,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             // ✅ Find available order slot (index của order null đầu tiên)
             const availableSlot = oldState.orders_list.findIndex(order => order === null);
             if (availableSlot === -1) {
-                alert('No available order slots! All 4 slots are full.');
+                toast.error('No available order slots! All 4 slots are full.');
                 return;
             }
 
@@ -223,18 +224,17 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 operations,
                 signature: rootSignature
             });
-
+            console.log(submitResult.success, 'submitResult1')
             if (submitResult.success) {
-                console.log('✅ Step 7: Order created successfully!', submitResult);
-                // alert(`Order created: ${submitResult.verified ? 'SUCCESS ✅' : 'FAILED ❌'}`);
+                toast.success('Order created successfully!');
             } else {
                 console.error('❌ Step 7: Order submission failed:', submitResult.error);
-                // alert(`Order submission failed: ${submitResult.error}`);
+                toast.error(`Order submission failed: ${submitResult.error}`);
             }
 
         } catch (error) {
             console.error('❌ Error creating order:', error);
-            alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };
 
