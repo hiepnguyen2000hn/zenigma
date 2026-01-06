@@ -14,6 +14,7 @@ import { useWallets } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
 import Header from './Header';
 import { useTokens } from '@/hooks/useTokens';
+import DateTimeRangePicker from './DateTimeRangePicker';
 
 // Order status mapping (dark theme colors)
 const ORDER_STATUS = {
@@ -69,6 +70,10 @@ const MyOrders = () => {
     token: false,
   });
 
+  // Date range state
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+
   const setFilter = (newFilters: Partial<OrderFilters>) => {
     setFiltersState((prev) => ({
       ...prev,
@@ -77,6 +82,25 @@ const MyOrders = () => {
     }));
   };
 
+  // Handle date changes - Chỉ gửi khi CẢ HAI from_date và to_date đều có
+  useEffect(() => {
+    if (startDate && endDate) {
+      // Format to ISO 8601 date string (YYYY-MM-DD)
+      const from_date = startDate.toISOString().split('T')[0];
+      const to_date = endDate.toISOString().split('T')[0];
+
+      setFilter({ from_date, to_date });
+      console.log('📅 [MyOrders] Date filter applied:', { from_date, to_date });
+    } else {
+      // Clear dates if one or both are null
+      setFiltersState((prev) => {
+        const { from_date, to_date, ...rest } = prev;
+        return rest;
+      });
+      console.log('📅 [MyOrders] Date filter cleared');
+    }
+  }, [startDate, endDate]);
+
   // Clear all filters
   const clearFilters = () => {
     setFiltersState({
@@ -84,6 +108,8 @@ const MyOrders = () => {
       page: 1,
       limit: 20,
     });
+    setStartDate(null);
+    setEndDate(null);
   };
 
   // Close dropdowns when clicking outside
@@ -244,10 +270,12 @@ const MyOrders = () => {
       setError(null);
       try {
         const walletId = extractPrivyWalletId(user.id);
+        console.log('🔍 [MyOrders] Fetching orders with filters:', filters);
         const response = await getOrderList(walletId, filters);
+        console.log('✅ [MyOrders] Orders fetched:', response.data?.length || 0, 'orders');
         setOrders(response.data || []);
       } catch (err) {
-        console.error('Failed to fetch orders:', err);
+        console.error('❌ [MyOrders] Failed to fetch orders:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch orders');
       } finally {
         setLoading(false);
@@ -395,6 +423,19 @@ const MyOrders = () => {
                 )}
               </div>
 
+              {/* DateTime Range Picker */}
+              <DateTimeRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onStartDateChange={setStartDate}
+                onEndDateChange={setEndDate}
+                onClear={() => {
+                  setStartDate(null);
+                  setEndDate(null);
+                  setFilter({ from_date: undefined, to_date: undefined });
+                }}
+              />
+
               {/* Clear button */}
               <button
                 onClick={clearFilters}
@@ -402,22 +443,6 @@ const MyOrders = () => {
               >
                 Clear
               </button>
-
-              {/* From Date */}
-              <div className="relative">
-                <button className="flex items-center gap-2 px-4 py-2 bg-black border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-600 hover:text-white transition-colors">
-                  <span>From date</span>
-                  <Calendar size={16} />
-                </button>
-              </div>
-
-              {/* To Date */}
-              <div className="relative">
-                <button className="flex items-center gap-2 px-4 py-2 bg-black border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-600 hover:text-white transition-colors">
-                  <span>To date</span>
-                  <Calendar size={16} />
-                </button>
-              </div>
             </div>
 
             {/* Cancel Selected Button */}
@@ -503,7 +528,6 @@ const MyOrders = () => {
                 ) : (
                   orders.map((order, index) => {
                     const assetSymbol = getSymbol(order.asset);
-                    const quoteSymbol = 'USDC';
                     const isBuy = order.side === 0;
                     const status = ORDER_STATUS[order.status as keyof typeof ORDER_STATUS] || ORDER_STATUS[0];
                     const orderTime = new Date(order.time).toLocaleDateString('en-US', {

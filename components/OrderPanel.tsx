@@ -227,13 +227,14 @@ const OrderPanel = () => {
             try {
                 // ✅ Extract wallet_id from Privy user ID
                 const walletId = extractPrivyWalletId(user.id);
-                console.log('🔍 Fetching orders with filters:', filters);
+                console.log('🔍 [OrderPanel] Fetching orders with filters:', filters);
                 console.log('  - Wallet ID:', walletId);
 
                 const response = await getOrderList(walletId, filters);
+                console.log('✅ [OrderPanel] Orders fetched:', response.data?.length || 0, 'orders');
                 setOrders(response.data || []);
             } catch (err) {
-                console.error('Failed to fetch orders:', err);
+                console.error('❌ [OrderPanel] Failed to fetch orders:', err);
                 setError(err instanceof Error ? err.message : 'Failed to fetch orders');
             } finally {
                 setLoading(false);
@@ -457,7 +458,6 @@ const OrderPanel = () => {
                         orders.map((order, index) => {
                             // ✅ Get token symbol from asset index
                             const assetSymbol = getSymbol(order.asset);
-                            const quoteSymbol = 'USDC'; // Default quote token (assume USDC for now)
 
                             const isBuy = order.side === 0;
                             const status = ORDER_STATUS[order.status as keyof typeof ORDER_STATUS] || ORDER_STATUS['Created'];
@@ -495,7 +495,7 @@ const OrderPanel = () => {
                                         <div className="flex items-center space-x-1.5">
                                             <TokenIconBySymbol symbol={assetSymbol} size="sm" />
                                             <span className="text-white font-medium text-xs">
-                                                {assetSymbol}/{quoteSymbol}
+                                                {assetSymbol}
                                             </span>
                                         </div>
                                     </td>

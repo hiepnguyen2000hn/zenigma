@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ChevronDown, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ExternalLink, Circle } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
@@ -9,6 +9,8 @@ import { getUserProfile, getTransferHistory, type Transfer } from '@/lib/service
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import Header from './Header';
 import WithdrawModal from './WithdrawModal';
+import DateTimeRangePicker from './DateTimeRangePicker';
+import { useTokens } from '@/hooks/useTokens';
 
 // Transfer direction mapping (from API string to UI display)
 const TRANSFER_DIRECTION = {
@@ -39,20 +41,103 @@ interface Asset {
   value: string;
 }
 
+// Transfer filter params interface
+interface TransferFilters {
+  page?: number;
+  limit?: number;
+  status?: string[];      // ['pending', 'completed', 'failed']
+  direction?: string[];   // ['0', '1'] - 0=DEPOSIT, 1=WITHDRAW
+  token?: number;
+  from_date?: string;
+  to_date?: string;
+}
+
 const MyAssets = () => {
   const { authenticated, user } = usePrivy();
   const { getSymbol } = useTokenMapping();
+  const { tokens } = useTokens();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
 
+  // Dropdown refs
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const directionDropdownRef = useRef<HTMLDivElement>(null);
+  const tokenDropdownRef = useRef<HTMLDivElement>(null);
+
   const [showFilters, setShowFilters] = useState({
     status: false,
-    type: false,
-    asset: false,
+    direction: false,
+    token: false,
   });
+
+  // Filter state
+  const [filters, setFiltersState] = useState<TransferFilters>({
+    page: 1,
+    limit: 20,
+  });
+
+  // Date range state
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+
+  // Set filter function
+  const setFilter = (newFilters: Partial<TransferFilters>) => {
+    setFiltersState((prev) => ({
+      ...prev,
+      ...newFilters,
+      page: newFilters.page ?? 1,
+    }));
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFiltersState({
+      page: 1,
+      limit: 20,
+    });
+    setStartDate(null);
+    setEndDate(null);
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setShowFilters(prev => ({ ...prev, status: false }));
+      }
+      if (directionDropdownRef.current && !directionDropdownRef.current.contains(event.target as Node)) {
+        setShowFilters(prev => ({ ...prev, direction: false }));
+      }
+      if (tokenDropdownRef.current && !tokenDropdownRef.current.contains(event.target as Node)) {
+        setShowFilters(prev => ({ ...prev, token: false }));
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle date changes - Chỉ gửi khi CẢ HAI from_date và to_date đều có
+  useEffect(() => {
+    if (startDate && endDate) {
+      // Format to ISO 8601 date string (YYYY-MM-DD)
+      const from_date = startDate.toISOString().split('T')[0];
+      const to_date = endDate.toISOString().split('T')[0];
+
+      setFilter({ from_date, to_date });
+      console.log('📅 [MyAssets] Date filter applied:', { from_date, to_date });
+    } else {
+      // Clear dates if one or both are null
+      setFiltersState((prev) => {
+        const { from_date, to_date, ...rest } = prev;
+        return rest;
+      });
+      console.log('📅 [MyAssets] Date filter cleared');
+    }
+  }, [startDate, endDate]);
 
   // Fetch user profile and calculate assets
   useEffect(() => {
@@ -85,15 +170,6 @@ const MyAssets = () => {
         }
 
         setAssets(assetsList);
-
-        // ✅ Fetch transfer history from API
-        console.log('🔍 Fetching transfer history for wallet:', walletId);
-        const transferResponse = await getTransferHistory(walletId, {
-          page: 1,
-          limit: 20,
-        });
-        console.log('✅ Transfer history loaded:', transferResponse);
-        setTransfers(transferResponse.data || []);
       } catch (err) {
         console.error('Failed to fetch assets:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch assets');
@@ -104,6 +180,28 @@ const MyAssets = () => {
 
     fetchAssets();
   }, [authenticated, user?.id]);
+
+  // Fetch transfer history with filters
+  useEffect(() => {
+    if (!authenticated || !user?.id) {
+      setTransfers([]);
+      return;
+    }
+
+    const fetchTransfers = async () => {
+      try {
+        const walletId = extractPrivyWalletId(user.id);
+        console.log('🔍 [MyAssets] Fetching transfers with filters:', filters);
+        const transferResponse = await getTransferHistory(walletId, filters);
+        console.log('✅ [MyAssets] Transfers fetched:', transferResponse.data?.length || 0, 'transfers');
+        setTransfers(transferResponse.data || []);
+      } catch (err) {
+        console.error('❌ [MyAssets] Failed to fetch transfers:', err);
+      }
+    };
+
+    fetchTransfers();
+  }, [authenticated, user?.id, filters]);
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -205,51 +303,148 @@ const MyAssets = () => {
         <div className="bg-gray-900 rounded-lg border border-gray-800 mb-4">
           <div className="p-4 flex items-center gap-3">
             {/* Status Filter */}
-            <div className="relative">
+            <div ref={statusDropdownRef} className="relative">
               <button
                 onClick={() => setShowFilters({ ...showFilters, status: !showFilters.status })}
-                className="flex items-center gap-2 px-4 py-2 bg-black border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-600 hover:text-white transition-colors"
+                className={`flex items-center gap-2 px-4 py-2 bg-black border rounded-lg text-sm transition-colors ${
+                  filters.status && filters.status.length > 0
+                    ? 'border-gray-600 text-white'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
+                }`}
               >
+                <Circle className={`w-3 h-3 ${filters.status && filters.status.length > 0 ? 'text-green-500 fill-green-500' : ''}`} />
                 <span>Status</span>
-                <ChevronDown size={16} />
+                <ChevronDown size={16} className={`transition-transform ${showFilters.status ? 'rotate-180' : ''}`} />
               </button>
+
+              {showFilters.status && (
+                <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[140px]">
+                  <button
+                    onClick={() => {
+                      setFilter({ status: ['pending'] });
+                      setShowFilters({ ...showFilters, status: false });
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-yellow-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                  >
+                    <Circle className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                    <span>Pending</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilter({ status: ['completed'] });
+                      setShowFilters({ ...showFilters, status: false });
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-green-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                  >
+                    <Circle className="w-3 h-3 text-green-500 fill-green-500" />
+                    <span>Completed</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilter({ status: ['failed'] });
+                      setShowFilters({ ...showFilters, status: false });
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                  >
+                    <Circle className="w-3 h-3 text-red-500 fill-red-500" />
+                    <span>Failed</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Type Filter */}
-            <div className="relative">
+            {/* Direction/Type Filter */}
+            <div ref={directionDropdownRef} className="relative">
               <button
-                onClick={() => setShowFilters({ ...showFilters, type: !showFilters.type })}
-                className="flex items-center gap-2 px-4 py-2 bg-black border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-600 hover:text-white transition-colors"
+                onClick={() => setShowFilters({ ...showFilters, direction: !showFilters.direction })}
+                className={`flex items-center gap-2 px-4 py-2 bg-black border rounded-lg text-sm transition-colors ${
+                  filters.direction && filters.direction.length > 0
+                    ? 'border-gray-600 text-white'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
+                }`}
               >
+                <Circle className={`w-3 h-3 ${filters.direction && filters.direction.length > 0 ? 'text-blue-500 fill-blue-500' : ''}`} />
                 <span>Type</span>
-                <ChevronDown size={16} />
+                <ChevronDown size={16} className={`transition-transform ${showFilters.direction ? 'rotate-180' : ''}`} />
               </button>
+
+              {showFilters.direction && (
+                <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[120px]">
+                  <button
+                    onClick={() => {
+                      setFilter({ direction: ['0'] });
+                      setShowFilters({ ...showFilters, direction: false });
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-green-500 hover:bg-gray-800 transition-colors"
+                  >
+                    Deposit
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilter({ direction: ['1'] });
+                      setShowFilters({ ...showFilters, direction: false });
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-800 transition-colors"
+                  >
+                    Withdraw
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Asset Filter */}
-            <div className="relative">
+            {/* Token Filter */}
+            <div ref={tokenDropdownRef} className="relative">
               <button
-                onClick={() => setShowFilters({ ...showFilters, asset: !showFilters.asset })}
-                className="flex items-center gap-2 px-4 py-2 bg-black border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-600 hover:text-white transition-colors"
+                onClick={() => setShowFilters({ ...showFilters, token: !showFilters.token })}
+                className={`flex items-center gap-2 px-4 py-2 bg-black border rounded-lg text-sm transition-colors ${
+                  filters.token !== undefined
+                    ? 'border-gray-600 text-white'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
+                }`}
               >
-                <span>Asset</span>
-                <ChevronDown size={16} />
+                <Circle className={`w-3 h-3 ${filters.token !== undefined ? 'text-purple-500 fill-purple-500' : ''}`} />
+                <span>Token</span>
+                <ChevronDown size={16} className={`transition-transform ${showFilters.token ? 'rotate-180' : ''}`} />
               </button>
+
+              {showFilters.token && (
+                <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[160px] max-h-64 overflow-y-auto">
+                  {tokens.map((token) => (
+                    <button
+                      key={token.index}
+                      onClick={() => {
+                        setFilter({ token: token.index });
+                        setShowFilters({ ...showFilters, token: false });
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                    >
+                      <TokenIconBySymbol symbol={token.symbol} size="sm" />
+                      <span>{token.symbol}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* From Date */}
-            <div className="relative">
-              <button className="flex items-center gap-2 px-4 py-2 bg-black border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-600 hover:text-white transition-colors">
-                <span>From date</span>
-              </button>
-            </div>
+            {/* DateTime Range Picker */}
+            <DateTimeRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              onClear={() => {
+                setStartDate(null);
+                setEndDate(null);
+              }}
+            />
 
-            {/* To Date */}
-            <div className="relative">
-              <button className="flex items-center gap-2 px-4 py-2 bg-black border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-gray-600 hover:text-white transition-colors">
-                <span>To date</span>
-              </button>
-            </div>
+            {/* Clear button */}
+            <button
+              onClick={clearFilters}
+              className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Clear
+            </button>
           </div>
         </div>
 

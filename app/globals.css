@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-datepicker/dist/react-datepicker.css";
 
 :root {
   /* ZK-Proof Landing Page - Exact Colors from Figma */
@@ -101,4 +102,64 @@ body {
 .scrollbar-thumb-teal-500\/50:hover::-webkit-scrollbar-thumb,
 .hover\:scrollbar-thumb-teal-500\/70:hover::-webkit-scrollbar-thumb {
   background: rgba(20, 184, 166, 0.7);
+}
+
+/* React DatePicker Dark Theme Styles */
+.react-datepicker {
+  background-color: #111827 !important;
+  border: 1px solid #374151 !important;
+  color: white !important;
+  font-family: inherit !important;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3) !important;
+}
+
+.react-datepicker__header {
+  background-color: #1f2937 !important;
+  border-bottom: 1px solid #374151 !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker-time__header,
+.react-datepicker__day-name {
+  color: white !important;
+}
+
+.react-datepicker__day {
+  color: #d1d5db !important;
+}
+
+.react-datepicker__day:hover {
+  background-color: #374151 !important;
+  color: white !important;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}
+
+.react-datepicker__day--disabled {
+  color: #4b5563 !important;
+}
+
+
+.react-datepicker__navigation {
+  top: 10px !important;
+}
+
+.react-datepicker__navigation-icon::before {
+  border-color: #d1d5db !important;
+}
+
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before {
+  border-color: white !important;
+}
+
+.react-datepicker-popper {
+  z-index: 9999 !important;
+}
+
+.react-datepicker__triangle {
+  display: none !important;
 }
