@@ -215,13 +215,21 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
             console.log('🔐 [hdlInitWalletClientSide] No existing keys found - starting key generation...');
             const payload = await generateWalletPayload();
             console.log('✅ [hdlInitWalletClientSide] Keys generated and saved to localStorage');
+            console.log(payload, 'payload generated');
 
-            // Part 2: CHECK is_initialized before calling API BE
-            console.log('📊 [hdlInitWalletClientSide] Checking initialization status...');
-            console.log('  - is_initialized parameter:', is_initialized);
 
             if (is_initialized === false) {
-                await initWalletWithPayload(payload);
+                await initWalletWithPayload({
+                    proof: payload.proof,
+                    wallet_address: payload.wallet_address,
+                    signature: payload.signature,
+                    pk_root: payload.pk_root,
+                    blinder: payload.blinder,
+                    pk_match: payload.pk_match,
+                    sk_match: payload.sk_match,
+                    publicInputs: payload.publicInputs,
+                    wallet_id: payload.wallet_id
+                });
             }
 
         } catch (error) {
