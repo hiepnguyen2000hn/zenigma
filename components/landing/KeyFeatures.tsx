@@ -2,8 +2,15 @@
 
 import { motion } from "framer-motion";
 import { Cpu, Zap, CheckCircle, Shield, Lock, Layers, TrendingUp } from "lucide-react";
+import { useRef } from "react";
+import { useStaggerReveal } from "@/hooks/useScrollAnimation";
 
 export default function KeyFeatures() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // ✅ GSAP animation với reverse khi scroll back
+  useStaggerReveal(containerRef, ".feature-card", 0.08);
+
   const features = [
     {
       icon: Cpu,
@@ -58,28 +65,27 @@ export default function KeyFeatures() {
   return (
     <section className="relative w-full py-6">
       <div className="max-w-[1280px] mx-auto px-12">
+        {/* Title animation - reverse khi scroll back */}
         <motion.h2
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
+          viewport={{ once: false, amount: 0.5 }}
+          transition={{ duration: 0.6 }}
           className="text-4xl font-bold text-white text-center mb-16"
         >
           Key Features
         </motion.h2>
 
-        <div className="grid grid-cols-4 gap-5">
+        <div ref={containerRef} className="grid grid-cols-4 gap-5">
           {features.map((feature, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.08 }}
+              className="feature-card rounded-2xl p-6 relative overflow-hidden"
               whileHover={{
                 y: -4,
                 boxShadow: `0 8px 32px ${feature.color}55`,
               }}
-              className="rounded-2xl p-6 relative overflow-hidden"
+              transition={{ duration: 0.2 }}
               style={{
                 background: "rgba(40, 37, 55, 0.4)",
                 backdropFilter: "blur(12px)",

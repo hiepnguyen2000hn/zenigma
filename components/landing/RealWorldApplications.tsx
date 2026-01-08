@@ -2,31 +2,37 @@
 
 import { motion } from "framer-motion";
 import { FileText, Code, Workflow, Shield, ArrowRight } from "lucide-react";
+import { useRef } from "react";
+import { useStaggerReveal } from "@/hooks/useScrollAnimation";
 
 export default function RealWorldApplications() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // ✅ GSAP animation với reverse khi scroll back
+  useStaggerReveal(containerRef, ".app-card", 0.15);
+
   return (
     <section className="relative w-full py-6">
       <div className="max-w-[1280px] mx-auto px-12">
+        {/* Title animation - reverse khi scroll back */}
         <motion.h2
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
+          viewport={{ once: false, amount: 0.5 }}
+          transition={{ duration: 0.6 }}
           className="text-4xl font-bold text-white text-center mb-16"
         >
           Real-World Applications
         </motion.h2>
 
-        <div className="grid grid-cols-12 gap-5 mb-5">
+        <div ref={containerRef} className="grid grid-cols-12 gap-5 mb-5">
           {/* Left column - smaller height */}
           <div className="col-span-5 grid gap-5">
             {/* Privacy-Preserving KYC - Takes full width */}
             <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.1 }}
+              className="app-card rounded-2xl p-8 relative overflow-hidden"
               whileHover={{ y: -4 }}
-              className="rounded-2xl p-8 relative overflow-hidden"
+              transition={{ duration: 0.2 }}
               style={{
                 background: "rgba(40, 37, 55, 0.5)",
                 backdropFilter: "blur(16px)",
@@ -88,12 +94,9 @@ export default function RealWorldApplications() {
           {/* Right column - taller card */}
           <div className="col-span-7">
             <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.2 }}
+              className="app-card rounded-2xl p-8 relative overflow-hidden h-full"
               whileHover={{ y: -4 }}
-              className="rounded-2xl p-8 relative overflow-hidden h-full"
+              transition={{ duration: 0.2 }}
               style={{
                 background: "rgba(40, 37, 55, 0.5)",
                 backdropFilter: "blur(16px)",
@@ -153,12 +156,9 @@ export default function RealWorldApplications() {
         <div className="grid grid-cols-2 gap-5">
           {/* Developer Docs */}
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.3 }}
+            className="app-card rounded-2xl p-8 relative overflow-hidden"
             whileHover={{ y: -4 }}
-            className="rounded-2xl p-8 relative overflow-hidden"
+            transition={{ duration: 0.2 }}
             style={{
               background: "rgba(40, 37, 55, 0.5)",
               backdropFilter: "blur(16px)",
@@ -199,12 +199,9 @@ export default function RealWorldApplications() {
 
           {/* Interledger Demo */}
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.4 }}
+            className="app-card rounded-2xl p-8 relative overflow-hidden"
             whileHover={{ y: -4 }}
-            className="rounded-2xl p-8 relative overflow-hidden"
+            transition={{ duration: 0.2 }}
             style={{
               background: "rgba(40, 37, 55, 0.5)",
               backdropFilter: "blur(16px)",

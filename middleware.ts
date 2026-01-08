@@ -7,17 +7,13 @@ export function middleware(request: NextRequest) {
   // ✅ Allowlist: Các routes hợp lệ (được phép)
   const allowedRoutes = [
     '/',            // Trang chủ
-    '/asset',       // Trang asset
+    '/assets',      // Trang assets
     '/orders',      // Trang orders
   ];
 
   // ✅ Cho phép các routes bắt đầu bằng (prefix match)
   const allowedPrefixes = [
-    '/tradingdashboard/',  // Tất cả trading pairs: /tradingdashboard/btc-usdc, /tradingdashboard/eth-usdc, etc.
-    '/api/',               // API routes
-    '/_next/',             // Next.js internal
-    '/static/',            // Static files
-    '/favicon.ico',        // Favicon
+    '/tradingdashboard/',  // Tất cả trading pairs
   ];
 
   // Check if route is allowed
@@ -33,17 +29,25 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// ✅ Matcher: Áp dụng cho tất cả routes trừ static files và API
+// ✅ Matcher: CHỈ áp dụng cho PAGE ROUTES, KHÔNG cho API/static/external
 export const config = {
   matcher: [
     /*
-     * Match all request paths except:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - Static file extensions (.png, .jpg, .svg, .ico, .webp, etc.)
+     * ✅ CHỈ match page routes cụ thể:
+     * - / (home)
+     * - /assets
+     * - /orders
+     * - /tradingdashboard/:path*
+     *
+     * ❌ KHÔNG match:
+     * - /api/* (API routes)
+     * - /_next/* (Next.js internals)
+     * - Static files (.png, .js, .css, etc.)
+     * - External requests
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|avif)).*)',
+    '/',
+    '/assets',
+    '/orders',
+    '/tradingdashboard/:path*',
   ],
 };

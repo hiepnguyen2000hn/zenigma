@@ -4,9 +4,12 @@ import { motion, useScroll, useTransform } from "framer-motion";
 import { Shield, LineChart, Target } from "lucide-react";
 import SpotlightCard from "../SpotlightCard";
 import { useRef } from "react";
+import { useStaggerReveal } from "@/hooks/useScrollAnimation";
 
 export default function ThreeCardSection() {
   const ref = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start end", "end start"]
@@ -18,6 +21,9 @@ export default function ThreeCardSection() {
   const y3 = useTransform(scrollYProgress, [0, 1], ["25%", "-15%"]);
   const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0, 1, 1, 0.8]);
   const scale = useTransform(scrollYProgress, [0, 0.5, 1], [0.85, 1, 0.95]);
+
+  // GSAP stagger reveal animation
+  useStaggerReveal(containerRef, ".card-item", 0.15);
 
   const cards = [
     {
@@ -48,12 +54,13 @@ export default function ThreeCardSection() {
   return (
     <section ref={ref} className="relative w-full py-8">
       <motion.div
+        ref={containerRef}
         className="max-w-[1280px] mx-auto px-12"
         style={{ opacity, scale }}
       >
         <div className="grid grid-cols-3 gap-6">
           {cards.map((card, i) => (
-            <motion.div key={i} >
+            <motion.div key={i} className="card-item">
               <SpotlightCard
                 spotlightColor={`${card.color}40`}
                 className="rounded-2xl h-full"
