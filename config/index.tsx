@@ -44,9 +44,7 @@ export const chainMetadata: Record<number, { name: string; imageUrl: string; gra
 
 // Wagmi config for Privy
 export const config = createConfig({
-  chains: [
-      mainnet,
-     sepolia, arbitrum, polygon, base, optimism],
+  chains: [sepolia, mainnet, arbitrum, polygon, base, optimism],
   transports: {
     [mainnet.id]: http(),
     [sepolia.id]: http(),

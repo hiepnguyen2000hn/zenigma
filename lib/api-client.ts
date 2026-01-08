@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type RequestConfig = RequestInit & {
-  params?: Record<string, string | number | boolean>;
+  params?: Record<string, string | number | boolean | (string | number)[]>;
   timeout?: number;
 };
 
@@ -65,13 +65,21 @@ class ApiClient {
 
   /**
    * Build URL với query params
+   * Hỗ trợ array values: status=value1&status=value2
    */
-  private buildURL(endpoint: string, params?: Record<string, string | number | boolean>): string {
+  private buildURL(endpoint: string, params?: Record<string, string | number | boolean | (string | number)[]>): string {
     const url = new URL(endpoint, this.baseURL);
 
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, String(value));
+        // ✅ Nếu value là array, append từng giá trị với cùng key
+        if (Array.isArray(value)) {
+          value.forEach((item) => {
+            url.searchParams.append(key, String(item));
+          });
+        } else {
+          url.searchParams.append(key, String(value));
+        }
       });
     }
 

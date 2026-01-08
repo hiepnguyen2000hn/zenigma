@@ -3,7 +3,6 @@ import {useSignTypedData} from 'wagmi'
 import {HelpCircle} from 'lucide-react';
 import {useState} from 'react';
 import ConnectButton from './ConnectButton';
-import ChainSelector from './ChainSelector';
 import TokenDisplay from './TokenDisplay';
 import ProofTestModal from './ProofTestModal';
 import DepositModal from './DepositModal';
@@ -299,7 +298,6 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
                         Deposit
                     </button>
 
-                    <ChainSelector/>
                     <ConnectButton
                         onLoginSuccess={hdlInitWalletClientSide}
                         onToggleSidebar={onToggleSidebar}

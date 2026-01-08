@@ -17,12 +17,12 @@ import { useTokens } from '@/hooks/useTokens';
 // Order status mapping (from API string to UI display)
 const ORDER_STATUS = {
     'Created': { label: 'Created', color: 'text-cyan-500', dotColor: 'text-cyan-500 fill-cyan-500' },
-    'Matching': { label: 'Matching', color: 'text-yellow-500', dotColor: 'text-yellow-500 fill-yellow-500' },
+    'Matching': { label: 'Pending', color: 'text-orange-500', dotColor: 'text-orange-500 fill-orange-500' },
     'Filled': { label: 'Filled', color: 'text-blue-500', dotColor: 'text-blue-500 fill-blue-500' },
     'Matched': { label: 'Matched', color: 'text-purple-500', dotColor: 'text-purple-500 fill-purple-500' },
     'Cancelled': { label: 'Cancelled', color: 'text-gray-500', dotColor: 'text-gray-500 fill-gray-500' },
     'Open': { label: 'Open', color: 'text-green-500', dotColor: 'text-green-500 fill-green-500' },
-    'Partial': { label: 'Partial', color: 'text-yellow-500', dotColor: 'text-yellow-500 fill-yellow-500' },
+    'Partial': { label: 'Partial', color: 'text-orange-400', dotColor: 'text-orange-400 fill-orange-400' },
 } as const;
 
 // Order filter params interface
@@ -58,9 +58,9 @@ const OrderPanel = () => {
     const { calculateNewState, cancelOrder } = useProof();
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
 
-    // ✅ Filter state với default status=["Created"], limit=4
+    // ✅ Filter state với default status=["Created", "Pending"], limit=4
     const [filters, setFiltersState] = useState<OrderFilters>({
-        status: ['Created'],
+        status: ['Created', 'Pending'],
         page: 1,
         limit: 4,
     });
@@ -79,7 +79,7 @@ const OrderPanel = () => {
     // Clear all filters
     const clearFilters = () => {
         setFiltersState({
-            status: ['Created'],
+            status: ['Created', 'Pending'],
             page: 1,
             limit: 4,
         });
@@ -243,6 +243,28 @@ const OrderPanel = () => {
         fetchOrders();
     }, [authenticated, user?.id, filters]);
 
+    // ✅ Auto refetch mỗi 5s với filter hiện tại
+    useEffect(() => {
+        if (!authenticated || !user?.id) {
+            return;
+        }
+
+        const intervalId = setInterval(async () => {
+            try {
+                const walletId = extractPrivyWalletId(user.id);
+                console.log('🔄 Auto-refetching orders with current filters:', filters);
+
+                const response = await getOrderList(walletId, filters);
+                setOrders(response.data || []);
+            } catch (err) {
+                console.error('Auto-refetch failed:', err);
+            }
+        }, 5000); // Refetch mỗi 5s
+
+        // Cleanup interval khi unmount hoặc dependencies thay đổi
+        return () => clearInterval(intervalId);
+    }, [authenticated, user?.id, filters]);
+
     const hasOrders = orders.length > 0;
     return (
         <div className="bg-black border-t border-gray-800">
@@ -286,9 +308,9 @@ const OrderPanel = () => {
                                             setFilter({ status: ['Matching'] });
                                             setIsStatusDropdownOpen(false);
                                         }}
-                                        className="w-full text-left px-4 py-2 text-sm text-yellow-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                                        className="w-full text-left px-4 py-2 text-sm text-orange-500 hover:bg-gray-800 transition-colors flex items-center space-x-2"
                                     >
-                                        <Circle className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                                        <Circle className="w-3 h-3 text-orange-500 fill-orange-500" />
                                         <span>Pending</span>
                                     </button>
                                     <button
@@ -460,7 +482,10 @@ const OrderPanel = () => {
                             const quoteSymbol = 'USDC'; // Default quote token (assume USDC for now)
 
                             const isBuy = order.side === 0;
-                            const status = ORDER_STATUS[order.status as keyof typeof ORDER_STATUS] || ORDER_STATUS['Created'];
+
+                            // ✅ Lấy status từ API, có fallback mapping nếu cần
+                            const statusFromAPI = order.status;
+                            const statusConfig = ORDER_STATUS[statusFromAPI as keyof typeof ORDER_STATUS];
 
                             // Format time
                             const orderTime = new Date(order.time).toLocaleString('en-US', {
@@ -475,11 +500,13 @@ const OrderPanel = () => {
 
                             return (
                                 <tr key={index} className="border-b border-gray-800 hover:bg-gray-900/50 transition-colors">
-                                    {/* Status */}
+                                    {/* Status - Hiển thị từ API */}
                                     <td className="px-3 py-3">
                                         <div className="flex items-center space-x-1.5">
-                                            <Circle className={`w-2.5 h-2.5 ${status.dotColor}`} />
-                                            <span className={`${status.color} text-xs`}>{status.label}</span>
+                                            <Circle className={`w-2.5 h-2.5 ${statusConfig?.dotColor || 'text-gray-500 fill-gray-500'}`} />
+                                            <span className={`${statusConfig?.color || 'text-gray-400'} text-xs`}>
+                                                {statusConfig?.label || statusFromAPI}
+                                            </span>
                                         </div>
                                     </td>
 

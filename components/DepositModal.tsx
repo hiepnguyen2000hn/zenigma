@@ -60,6 +60,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     const [errorMessage, setErrorMessage] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingStep, setProcessingStep] = useState('');
+    const [hasJustSwitchedChain, setHasJustSwitchedChain] = useState(false);
 
     // Fetch tokens from API with cache
     const { tokens, isLoading: isLoadingTokens } = useTokens();
@@ -569,7 +570,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     const handleStepChange = async (step: number) => {
         // ✅ When moving from Step 1 → Step 2, check if we need to switch chain
         if (currentStep === 1 && step === 2) {
-            if (selectedChainId !== currentChain?.id) {
+            // Check if chain needs switching AND hasn't been switched yet
+            if (selectedChainId !== currentChain?.id && !hasJustSwitchedChain) {
                 try {
                     setProcessingStep('Switching chain...');
                     setIsProcessing(true);
@@ -579,6 +581,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     toast.success(`Switched to ${NETWORKS.find(n => n.chainId === selectedChainId)?.label}`);
                     setIsProcessing(false);
                     setProcessingStep('');
+                    setHasJustSwitchedChain(true); // Mark that we just switched
+                    return; // Don't proceed to next step - user needs to click Next again
                 } catch (error) {
                     console.error('Failed to switch chain:', error);
                     toast.error('Failed to switch chain. Please try again.');
@@ -587,6 +591,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     return; // Don't proceed to next step
                 }
             }
+            // If already switched or chain is correct, proceed to next step
+            setHasJustSwitchedChain(false); // Reset flag when moving to step 2
         }
 
         setCurrentStep(step);
@@ -717,7 +723,10 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                         return (
                                             <button
                                                 key={network.chainId}
-                                                onClick={() => setSelectedChainId(network.chainId)}
+                                                onClick={() => {
+                                                    setSelectedChainId(network.chainId);
+                                                    setHasJustSwitchedChain(false); // Reset flag when changing chain selection
+                                                }}
                                                 className={`group w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-between ${
                                                     isSelected
                                                         ? 'border-teal-500 bg-teal-500/10 shadow-lg shadow-teal-500/20'

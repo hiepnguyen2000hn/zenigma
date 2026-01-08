@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { privyAppId, config } from "@/config";
 import React, { type ReactNode } from "react";
 import BalanceProvider from "@/components/BalanceProvider";
+import { sepolia } from "wagmi/chains";
 
 // Set up queryClient
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ function ContextProvider({
         embeddedWallets: {
           createOnLogin: "users-without-wallets",
         },
+        defaultChain: sepolia,
       }}
     >
       <QueryClientProvider client={queryClient}>

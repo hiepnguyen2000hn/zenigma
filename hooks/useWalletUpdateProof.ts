@@ -134,7 +134,7 @@ async function computeMerkleRoot(
   for (let i = 0; i < GLOBAL_DEPTH; i++) {
     const isRight = ((index >> i) & 1) === 1;
     hash = await poseidon2Hash(
-      isRight ? [hash, hashPath[i]] : [hashPath[i], hash],
+      isRight ? [hashPath[i], hash] : [hash, hashPath[i]],
       bb,
       Fr
     );
@@ -359,7 +359,7 @@ export function useWalletUpdateProof() {
         // Public inputs
         old_wallet_commitment: oldCommitment,
         new_wallet_commitment: newCommitment,
-        old_merkle_root: calculatedOldRoot,
+        old_merkle_root: oldMerkleRoot,
         transfer_direction,
         transfer_mint,
         transfer_amount,
@@ -398,12 +398,12 @@ export function useWalletUpdateProof() {
         order_operation_type,
       };
 
-      console.log('✅ Circuit inputs prepared');
+      console.log('✅ Circuit inputs prepared',inputs);
 
       // ============================================
       // STEP 6: Generate witness
       // ============================================
-      setProgress('Generating witness...');
+      setProgress('Generating witness...', inputs);
 
       const witnessStartTime = Date.now();
       const { witness } = await noir.execute(inputs);

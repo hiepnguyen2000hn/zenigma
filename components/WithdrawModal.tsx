@@ -21,6 +21,7 @@ import toast from 'react-hot-toast';
 interface WithdrawModalProps {
     isOpen: boolean;
     onClose: () => void;
+    onWithdrawSuccess?: () => void; // Callback sau khi withdraw thành công
 }
 
 const NETWORKS = [
@@ -30,7 +31,7 @@ const NETWORKS = [
     { value: 'optimism', label: 'Optimism' },
 ];
 
-const WithdrawModal = ({ isOpen, onClose }: WithdrawModalProps) => {
+const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProps) => {
     const [selectedToken, setSelectedToken] = useState<Token | null>(null);
     const [selectedNetwork, setSelectedNetwork] = useState('sepolia');
     const [amount, setAmount] = useState('');
@@ -218,6 +219,8 @@ const WithdrawModal = ({ isOpen, onClose }: WithdrawModalProps) => {
                     toast.success(`Withdraw verified successfully!\nAmount: ${amount} ${selectedToken.symbol}`, {
                         duration: 5000,
                     });
+                    // ✅ Call callback để refetch transfer history
+                    onWithdrawSuccess?.();
                 } else {
                     toast.error('Withdraw verification failed');
                 }

@@ -286,7 +286,11 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 <div className="flex items-center space-x-2 mb-6">
                     <button
                         onClick={toggleSide}
-                        className="flex-1 py-3 bg-white text-black rounded-lg font-medium flex items-center justify-center space-x-2 hover:bg-gray-100 transition-colors"
+                        className={`flex-1 py-3 rounded-lg font-semibold flex items-center justify-center space-x-2 transition-all duration-200 ${
+                            orderInput.side === 'buy'
+                                ? 'bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/30'
+                                : 'bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/30'
+                        }`}
                     >
                         <span>{orderInput.side === 'buy' ? 'Buy' : 'Sell'}</span>
                         <ArrowLeftRight className="w-4 h-4" />

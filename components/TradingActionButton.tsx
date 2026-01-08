@@ -72,12 +72,17 @@ const TradingActionButton = ({ className = "", onClick }: TradingActionButtonPro
     };
 
     const action = orderInput.side === 'buy' ? 'Buy' : 'Sell';
+    const isBuy = orderInput.side === 'buy';
 
     return (
         <button
             onClick={handleClick}
             disabled={isProcessing}
-            className={`bg-white text-black rounded-lg font-medium hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 ${className}`}
+            className={`rounded-lg font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 ${
+                isBuy
+                    ? 'bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/30'
+                    : 'bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-500/30'
+            } ${className}`}
         >
             {isProcessing && <Loader2 className="w-4 h-4 animate-spin" />}
             <span>{action} {pair.base}</span>

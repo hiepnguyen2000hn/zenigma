@@ -470,33 +470,30 @@ const MyOrders = () => {
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Time
                   </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Action
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-black divide-y divide-gray-800">
                 {!authenticated ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-20 text-center text-gray-400">
+                    <td colSpan={9} className="px-6 py-20 text-center text-gray-400">
                       Sign in to view your orders.
                     </td>
                   </tr>
                 ) : loading ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-20 text-center text-gray-400">
+                    <td colSpan={9} className="px-6 py-20 text-center text-gray-400">
                       Loading orders...
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-20 text-center text-red-500">
+                    <td colSpan={9} className="px-6 py-20 text-center text-red-500">
                       Error: {error}
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-20 text-center text-gray-400">
+                    <td colSpan={9} className="px-6 py-20 text-center text-gray-400">
                       No orders found.
                     </td>
                   </tr>
@@ -563,29 +560,6 @@ const MyOrders = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-400">
                           {orderTime}
-                        </td>
-                        {/* Action - Cancel Button (Only show for Created status) */}
-                        <td className="px-6 py-4 text-center">
-                          {order.status === 'Created' && (
-                            <button
-                              onClick={() => handleCancelOrder(order.order_index)}
-                              disabled={isCancelling}
-                              className="inline-flex items-center space-x-1 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-500 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Cancel Order"
-                            >
-                              {isCancelling ? (
-                                <>
-                                  <div className="w-3 h-3 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin"></div>
-                                  <span>Cancelling...</span>
-                                </>
-                              ) : (
-                                <>
-                                  <X size={14} />
-                                  <span>Cancel</span>
-                                </>
-                              )}
-                            </button>
-                          )}
                         </td>
                       </tr>
                     );

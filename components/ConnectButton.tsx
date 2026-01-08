@@ -221,9 +221,21 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSideba
 
     const handleLogout = async () => {
         try {
+            // ✅ Step 1: Clear all crypto keys from localStorage
+            console.log('🔑 Clearing all crypto keys...');
+            const keysToRemove = ['pk_root', 'sk_root', 'pk_match', 'sk_match'];
+            keysToRemove.forEach(key => {
+                localStorage.removeItem(key);
+                console.log(`✅ Removed ${key}`);
+            });
+
+            // ✅ Step 2: Clear backend tokens
             await auth.clearTokens();
+
+            // ✅ Step 3: Call Privy logout
             logout();
-            setIsDropdownOpen(false);
+
+            console.log('✅ Logout completed successfully');
         } catch (error) {
             console.error("Logout error:", error);
         }
