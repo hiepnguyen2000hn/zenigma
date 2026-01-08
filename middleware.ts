@@ -6,13 +6,14 @@ export function middleware(request: NextRequest) {
 
   // ✅ Allowlist: Các routes hợp lệ (được phép)
   const allowedRoutes = [
-    '/assets',
-    '/orders',
+    '/',            // Trang chủ
+    '/asset',       // Trang asset
+    '/orders',      // Trang orders
   ];
 
   // ✅ Cho phép các routes bắt đầu bằng (prefix match)
   const allowedPrefixes = [
-    '/TradingDashboard/',  // Tất cả trading pairs: /TradingDashboard/btc-usdc, /TradingDashboard/eth-usdc, etc.
+    '/tradingdashboard/',  // Tất cả trading pairs: /tradingdashboard/btc-usdc, /tradingdashboard/eth-usdc, etc.
     '/api/',               // API routes
     '/_next/',             // Next.js internal
     '/static/',            // Static files
@@ -21,11 +22,11 @@ export function middleware(request: NextRequest) {
 
   // Check if route is allowed
   const isAllowed = allowedRoutes.includes(pathname) ||
-                    allowedPrefixes.some(prefix => pathname.startsWith(prefix));
+                    allowedPrefixes.some(prefix => pathname.toLowerCase().startsWith(prefix));
 
-  // ✅ Nếu KHÔNG phải route hợp lệ → redirect về /TradingDashboard/btc-usdc
+  // ✅ Nếu KHÔNG phải route hợp lệ → redirect về /tradingdashboard/btc-usdc
   if (!isAllowed) {
-    return NextResponse.redirect(new URL('/TradingDashboard/btc-usdc', request.url));
+    return NextResponse.redirect(new URL('/tradingdashboard/btc-usdc', request.url));
   }
 
   // Cho phép các routes hợp lệ
@@ -41,7 +42,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - Static file extensions (.png, .jpg, .svg, .ico, .webp, etc.)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|avif)).*)',
   ],
 };
