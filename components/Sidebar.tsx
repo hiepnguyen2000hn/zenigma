@@ -111,6 +111,25 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             const profileData = await fetchProfile(walletId);
             console.log('✅ Profile loaded and stored:', profileData);
 
+            // Check if system is syncing
+            if (profileData.sync === false) {
+                toast('System is synchronizing, please try again in a few minutes', {
+                    icon: '⏳',
+                    duration: 4000,
+                    style: {
+                        borderRadius: '12px',
+                        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                        color: '#fff',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        padding: '16px 20px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)',
+                    },
+                });
+                return;
+            }
+
             const oldState: WalletState = {
                 available_balances: profileData.available_balances || Array(10).fill('0'),
                 reserved_balances: profileData.reserved_balances || Array(10).fill('0'),

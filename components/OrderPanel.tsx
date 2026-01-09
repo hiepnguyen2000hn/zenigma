@@ -23,6 +23,7 @@ const ORDER_STATUS = {
     'Cancelled': { label: 'Cancelled', color: 'text-gray-500', dotColor: 'text-gray-500 fill-gray-500' },
     'Open': { label: 'Open', color: 'text-green-500', dotColor: 'text-green-500 fill-green-500' },
     'Partial': { label: 'Partial', color: 'text-orange-400', dotColor: 'text-orange-400 fill-orange-400' },
+    'SettlingMatch': { label: 'Settling', color: 'text-yellow-500', dotColor: 'text-yellow-500 fill-yellow-500' },
 } as const;
 
 // Order filter params interface
@@ -58,9 +59,9 @@ const OrderPanel = () => {
     const { calculateNewState, cancelOrder } = useProof();
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
 
-    // ✅ Filter state với default status=["Created", "Pending"], limit=4
+    // ✅ Filter state với default status=["Created", "Pending", "SettlingMatch"], limit=4
     const [filters, setFiltersState] = useState<OrderFilters>({
-        status: ['Created', 'Pending'],
+        status: ['Created', 'Pending', 'SettlingMatch'],
         page: 1,
         limit: 4,
     });
@@ -79,7 +80,7 @@ const OrderPanel = () => {
     // Clear all filters
     const clearFilters = () => {
         setFiltersState({
-            status: ['Created', 'Pending'],
+            status: ['Created', 'Pending', 'SettlingMatch'],
             page: 1,
             limit: 4,
         });

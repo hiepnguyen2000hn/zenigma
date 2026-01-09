@@ -77,7 +77,7 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
         // Step 2: Sign EIP-712 message
         const eip712Signature = await signTypedDataAsync({
             domain: {
-                name: "Renegade Auth",
+                name: "Zenigma Auth",
                 version: "1",
                 chainId
             },
@@ -86,7 +86,7 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
             },
             primaryType: 'Auth',
             message: {
-                message: "Renegade Authentication"
+                message: "Zenigma Authentication"
             }
         });
 
