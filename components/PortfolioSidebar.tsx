@@ -38,9 +38,9 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     const tokenBalances = useMemo(() => {
         if (!profile || !apiTokens || apiTokens.length === 0) return [];
 
-        return apiTokens.map((token, index) => {
-            // Get balance from profile's available_balances array (already formatted by backend)
-            const balance = profile.available_balances?.[index] || '0';
+        return apiTokens.map((token) => {
+            // ✅ FIXED: Use token.index (tokenIndex from API) instead of array index
+            const balance = profile.available_balances?.[token.index] || '0';
 
             // Get icon from ERC20_TOKENS config
             const tokenConfig = erc20TokensConfig.find(t => t.symbol === token.symbol);

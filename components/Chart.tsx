@@ -27,9 +27,6 @@ interface BinanceChartData {
     volume: number;
 }
 
-// Default pair when the requested pair is not available on Binance
-const DEFAULT_PAIR = 'btc-usdt';
-
 /**
  * Normalize wrapped tokens to their native equivalents for Binance API
  * WETH -> ETH, WBNB -> BNB, etc.
@@ -87,7 +84,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
     });
 
     // Fetch chart data from Binance API
-    const fetchChartData = async (pair: string, interval: string, isRetry = false): Promise<{ data: BinanceChartData[] | null; actualPair: string }> => {
+    const fetchChartData = async (pair: string, interval: string): Promise<{ data: BinanceChartData[] | null; actualPair: string }> => {
         try {
             setLoading(true);
             setError(null);
@@ -113,40 +110,20 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('❌ API Error:', errorText);
-
-                // If this is not a retry and the pair failed, fallback to default pair
-                if (!isRetry && pair !== DEFAULT_PAIR) {
-                    console.log(`⚠️ Pair "${pair}" not available on Binance, falling back to "${DEFAULT_PAIR}"`);
-                    return await fetchChartData(DEFAULT_PAIR, interval, true);
-                }
-
-                throw new Error(`Failed to fetch chart data: ${response.status}`);
+                throw new Error(`Failed to fetch chart data for ${pair}: ${response.status}`);
             }
 
             const result = await response.json();
             console.log('✅ Chart data received:', result.dataPoints, 'candles for', pair);
 
             if (!result.success || !result.data) {
-                // If invalid response and not a retry, fallback to default pair
-                if (!isRetry && pair !== DEFAULT_PAIR) {
-                    console.log(`⚠️ Invalid response for "${pair}", falling back to "${DEFAULT_PAIR}"`);
-                    return await fetchChartData(DEFAULT_PAIR, interval, true);
-                }
-                throw new Error('Invalid response from API');
+                throw new Error(`Invalid response from API for ${pair}`);
             }
 
             return { data: result.data, actualPair: pair };
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Failed to load chart data';
-
-            // If error and not a retry, fallback to default pair
-            if (!isRetry && pair !== DEFAULT_PAIR) {
-                console.log(`⚠️ Error fetching "${pair}", falling back to "${DEFAULT_PAIR}"`);
-                return await fetchChartData(DEFAULT_PAIR, interval, true);
-            }
-
-            setError(errorMessage);
-            console.error('💥 Error fetching chart data:', err);
+            // ✅ CHỈ log console, KHÔNG hiển thị error UI
+            console.error('💥 Error fetching chart data for', pair, ':', err);
             return { data: null, actualPair: pair };
         } finally {
             setLoading(false);
@@ -409,7 +386,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
                 clearTimeout(flashTimeoutRef.current);
             }
         };
-    }, [requestedPair, timeframe]);
+    }, [requestedPair, normalizedPair, timeframe]);
 
     const timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d'];
 
