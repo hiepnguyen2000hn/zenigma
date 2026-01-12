@@ -5,8 +5,9 @@ import { ChevronDown, ExternalLink, Circle } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
-import { getUserProfile, getTransferHistory, type Transfer } from '@/lib/services';
+import { getTransferHistory, type Transfer } from '@/lib/services';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import Header from './Header';
 import WithdrawModal from './WithdrawModal';
 import DateTimeRangePicker from './DateTimeRangePicker';
@@ -56,6 +57,7 @@ const MyAssets = () => {
   const { authenticated, user } = usePrivy();
   const { getSymbol } = useTokenMapping();
   const { tokens, isLoading: isLoadingTokens, isLoaded: isTokensLoaded } = useTokens();
+  const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -177,29 +179,35 @@ const MyAssets = () => {
       try {
         const walletId = extractPrivyWalletId(user.id);
         console.log('✅ Using tokens from hook:', tokens.length, 'tokens');
-        console.log('🔍 Fetching user profile and transfers for wallet:', walletId);
 
-        // ✅ OPTIMIZED: Run both API calls in parallel
-        const [profile, transferResponse] = await Promise.all([
-          getUserProfile(walletId),
-          getTransferHistory(walletId, filters)
-        ]);
+        // ✅ OPTIMIZED: Check store first, only fetch if missing
+        if (!profile) {
+          console.log('📥 Profile not in store, fetching...');
+          await fetchProfile(walletId);
+        } else {
+          console.log('✅ Using profile from store (no API call)');
+        }
 
-        console.log('✅ Profile loaded:', profile);
+        // Fetch transfers (profile is now guaranteed in store)
+        console.log('🔍 Fetching transfers for wallet:', walletId);
+        const transferResponse = await getTransferHistory(walletId, filters);
         console.log('✅ Transfers loaded:', transferResponse.data?.length || 0, 'transfers');
 
-        // Calculate assets from profile
-        const assetsList: Asset[] = tokens.map(token => {
-          const balance = profile.available_balances?.[token.index] || '0';
-          const balanceNum = parseFloat(balance);
-          return {
-            tokenIndex: token.index,
-            balance: balance,
-            value: (balanceNum * 1).toFixed(2), // Mock value calculation
-          };
-        });
+        // Calculate assets from profile (from store via hook)
+        if (profile) {
+          const assetsList: Asset[] = tokens.map(token => {
+            const balance = profile.available_balances?.[token.index] || '0';
+            const balanceNum = parseFloat(balance);
+            return {
+              tokenIndex: token.index,
+              balance: balance,
+              value: (balanceNum * 1).toFixed(2), // Mock value calculation
+            };
+          });
 
-        setAssets(assetsList);
+          setAssets(assetsList);
+        }
+
         setTransfers(transferResponse.data || []);
       } catch (err) {
         console.error('❌ Failed to fetch data:', err);
@@ -210,7 +218,7 @@ const MyAssets = () => {
     };
 
     fetchData();
-  }, [authenticated, user?.id, isTokensLoaded, tokens, filters]);
+  }, [authenticated, user?.id, isTokensLoaded, tokens, filters, profile, fetchProfile]);
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -259,7 +267,7 @@ const MyAssets = () => {
                       Sign in to view your assets.
                     </td>
                   </tr>
-                ) : loading || isLoadingTokens ? (
+                ) : loading || isLoadingTokens || profileLoading ? (
                   <tr>
                     <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
                       Loading assets...
@@ -495,7 +503,7 @@ const MyAssets = () => {
                       Sign in to view your transfer history.
                     </td>
                   </tr>
-                ) : loading ? (
+                ) : loading || profileLoading ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-gray-400">
                       Loading transfers...
