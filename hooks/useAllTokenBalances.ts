@@ -3,6 +3,7 @@ import { useWallets } from '@privy-io/react-auth';
 import { useReadContracts, useBalance } from 'wagmi';
 import { formatUnits, formatEther } from 'viem';
 import { getAvailableERC20Tokens } from '@/lib/constants';
+import type { Token } from '@/lib/services';
 
 // ERC20 ABI - balanceOf only
 const ERC20_ABI = [
@@ -15,13 +16,20 @@ const ERC20_ABI = [
   },
 ] as const;
 
+interface TokenConfig {
+  symbol: string;
+  address: string;
+  decimals: number;
+}
+
 /**
  * Hook to load balances for ALL ERC20 tokens at once
  * Uses Wagmi's useReadContracts (multicall) for better performance
  *
+ * @param apiTokens - Optional tokens from API. If provided, uses these instead of hardcoded tokens
  * @returns Object with token balances: { 'USDC': '100.50', 'USDT': '50.00', native: '1.5' }
  */
-export function useAllTokenBalances() {
+export function useAllTokenBalances(apiTokens?: Token[]) {
   const { wallets } = useWallets();
 
   // Get embedded wallet address
@@ -30,8 +38,17 @@ export function useAllTokenBalances() {
     return embeddedWallet?.address as `0x${string}` | undefined;
   }, [wallets]);
 
-  // Get all available ERC20 tokens
-  const availableTokens = getAvailableERC20Tokens();
+  // Use API tokens if provided, otherwise use hardcoded ERC20 tokens
+  const availableTokens: TokenConfig[] = useMemo(() => {
+    if (apiTokens && apiTokens.length > 0) {
+      return apiTokens.map(t => ({
+        symbol: t.symbol,
+        address: t.address,
+        decimals: t.decimals,
+      }));
+    }
+    return getAvailableERC20Tokens();
+  }, [apiTokens]);
 
   // Get native token balance (ETH/SepoliaETH)
   const {

@@ -16,6 +16,7 @@
     "@noir-lang/noir_js": "0.36.0",
     "@privy-io/react-auth": "^3.8.0",
     "@privy-io/wagmi": "^2.0.3",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@splinetool/react-spline": "^4.1.0",
     "@tanstack/react-query": "^5.90.7",
     "crypto-js": "^4.2.0",

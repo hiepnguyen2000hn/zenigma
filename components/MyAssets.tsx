@@ -10,8 +10,11 @@ import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import Header from './Header';
 import WithdrawModal from './WithdrawModal';
+import DepositModal from './DepositModal';
 import DateTimeRangePicker from './DateTimeRangePicker';
 import { useTokens } from '@/hooks/useTokens';
+import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
+import * as Tooltip from '@radix-ui/react-tooltip';
 
 // Transfer direction mapping (from API string to UI display)
 const TRANSFER_DIRECTION = {
@@ -39,7 +42,6 @@ const shortenHash = (hash: string, startLength = 6, endLength = 3): string => {
 interface Asset {
   tokenIndex: number;
   balance: string;
-  value: string;
 }
 
 // Transfer filter params interface
@@ -58,11 +60,14 @@ const MyAssets = () => {
   const { getSymbol } = useTokenMapping();
   const { tokens, isLoading: isLoadingTokens, isLoaded: isTokensLoaded } = useTokens();
   const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
+  // Pass tokens from API to read wallet balances for all tokens
+  const { balances: walletBalances, isLoading: isLoadingWalletBalances } = useAllTokenBalances(tokens);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
 
   // Dropdown refs
   const statusDropdownRef = useRef<HTMLDivElement>(null);
@@ -195,7 +200,6 @@ const MyAssets = () => {
           const assetsList: Asset[] = tokens.map(token => ({
             tokenIndex: token.index,
             balance: currentProfile.available_balances?.[token.index] || '0',
-            value: (parseFloat(currentProfile.available_balances?.[token.index] || '0') * 1).toFixed(2),
           }));
           setAssets(assetsList);
         }
@@ -257,7 +261,7 @@ const MyAssets = () => {
             <div>
               <h1 className="text-2xl font-bold text-white mb-2">Assets</h1>
               <p className="text-sm text-gray-400">
-                Your deposits inside of DarkPool. Only you and your connected relayer can see your balances.
+                Your deposits inside of Zenigma. Only you and your connected relayer can see your balances.
               </p>
             </div>
             <button
@@ -270,74 +274,120 @@ const MyAssets = () => {
         </div>
 
         {/* Assets Table */}
-        <div className="bg-black border border-gray-800 rounded-lg overflow-hidden mb-8">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-900 border-b border-gray-800">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Asset
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Balance
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Value
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-black divide-y divide-gray-800">
-                {!authenticated ? (
+        <Tooltip.Provider delayDuration={200}>
+          <div className="bg-black border border-gray-800 rounded-lg overflow-hidden mb-8">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-900 border-b border-gray-800">
                   <tr>
-                    <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
-                      Sign in to view your assets.
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Asset
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Balance Wallet
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Balance Zenigma
+                    </th>
                   </tr>
-                ) : loading || isLoadingTokens || profileLoading ? (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
-                      Loading assets...
-                    </td>
-                  </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-20 text-center text-red-500">
-                      Error: {error}
-                    </td>
-                  </tr>
-                ) : assets.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
-                      No assets found.
-                    </td>
-                  </tr>
-                ) : (
-                  assets.map((asset, index) => {
-                    // Get symbol from tokens array (from useTokens hook)
-                    const tokenInfo = tokens.find(t => t.index === asset.tokenIndex);
-                    const symbol = tokenInfo?.symbol || getSymbol(asset.tokenIndex);
-                    return (
-                      <tr key={index} className="hover:bg-gray-900/50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <TokenIconBySymbol symbol={symbol} size="sm" />
-                            <span className="text-sm font-medium text-white">{symbol}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
-                          {parseFloat(asset.balance).toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
-                          ${asset.value}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-black divide-y divide-gray-800">
+                  {!authenticated ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
+                        Sign in to view your assets.
+                      </td>
+                    </tr>
+                  ) : loading || isLoadingTokens || profileLoading || isLoadingWalletBalances ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
+                        Loading assets...
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-20 text-center text-red-500">
+                        Error: {error}
+                      </td>
+                    </tr>
+                  ) : assets.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
+                        No assets found.
+                      </td>
+                    </tr>
+                  ) : (
+                    assets.map((asset, index) => {
+                      // Get symbol from tokens array (from useTokens hook)
+                      const tokenInfo = tokens.find(t => t.index === asset.tokenIndex);
+                      const symbol = tokenInfo?.symbol || getSymbol(asset.tokenIndex);
+                      // Get wallet balance for this token symbol
+                      const walletBalance = walletBalances[symbol] || '0';
+                      const walletBalanceNum = parseFloat(walletBalance);
+                      // Check if native token (ETH, WETH, etc.) -> 4 decimals, others -> 2 decimals
+                      const isNativeToken = symbol.toUpperCase().includes('ETH');
+                      const walletDecimals = isNativeToken ? 4 : 2;
+                      // Format balance zenigma - always 2 decimal places
+                      const zenigmaBalance = parseFloat(asset.balance);
+                      return (
+                        <tr
+                          key={index}
+                          className="hover:bg-gray-800 transition-colors cursor-pointer"
+                          onClick={() => setIsDepositModalOpen(true)}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2">
+                              <TokenIconBySymbol symbol={symbol} size="sm" />
+                              <span className="text-sm font-medium text-white">{symbol}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
+                            <Tooltip.Root>
+                              <Tooltip.Trigger asChild>
+                                <span className="cursor-default">
+                                  {walletBalanceNum.toFixed(walletDecimals)}
+                                </span>
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Content
+                                  className="bg-gray-800 border border-gray-700 px-3 py-2 rounded-lg text-xs text-white shadow-xl z-50"
+                                  side="right"
+                                  sideOffset={5}
+                                >
+                                  {walletBalanceNum.toFixed(8)}
+                                  <Tooltip.Arrow className="fill-gray-800" />
+                                </Tooltip.Content>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
+                            <Tooltip.Root>
+                              <Tooltip.Trigger asChild>
+                                <span className="cursor-default">
+                                  {zenigmaBalance.toFixed(2)}
+                                </span>
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Content
+                                  className="bg-gray-800 border border-gray-700 px-3 py-2 rounded-lg text-xs text-white shadow-xl z-50"
+                                  side="right"
+                                  sideOffset={5}
+                                >
+                                  {zenigmaBalance.toFixed(8)}
+                                  <Tooltip.Arrow className="fill-gray-800" />
+                                </Tooltip.Content>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </Tooltip.Provider>
 
         {/* Transfer History Section */}
         <div className="mb-6">
@@ -619,6 +669,12 @@ const MyAssets = () => {
         isOpen={isWithdrawModalOpen}
         onClose={() => setIsWithdrawModalOpen(false)}
         onWithdrawSuccess={fetchTransferHistory}
+      />
+
+      {/* Deposit Modal */}
+      <DepositModal
+        isOpen={isDepositModalOpen}
+        onClose={() => setIsDepositModalOpen(false)}
       />
     </div>
   );
