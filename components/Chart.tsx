@@ -30,19 +30,43 @@ interface BinanceChartData {
 // Default pair when the requested pair is not available on Binance
 const DEFAULT_PAIR = 'btc-usdt';
 
+/**
+ * Normalize wrapped tokens to their native equivalents for Binance API
+ * WETH -> ETH, WBNB -> BNB, etc.
+ */
+const normalizePairForBinance = (pair: string): string => {
+    // Split pair (e.g., 'weth-usdc' -> ['weth', 'usdc'])
+    const [base, quote] = pair.toLowerCase().split('-');
+
+    // Map wrapped tokens to native tokens
+    const tokenMap: Record<string, string> = {
+        'weth': 'eth',
+        'wbnb': 'bnb',
+    };
+
+    // Normalize base token if it's wrapped
+    const normalizedBase = tokenMap[base] || base;
+
+    // Return normalized pair
+    return `${normalizedBase}-${quote}`;
+};
+
 const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
     // Read trading pair from store (priority over props)
     const tradingPair = useAtomValue(tradingPairAtom);
     const requestedPair = tradingPair.symbol || pair;
     const effectiveCrypto = tradingPair.base || crypto;
 
-    // Actual pair being displayed (may fallback to DEFAULT_PAIR if requested pair not available)
-    const [displayedPair, setDisplayedPair] = useState(requestedPair);
+    // Normalize wrapped tokens for Binance API (WETH -> ETH, WBNB -> BNB)
+    const normalizedPair = normalizePairForBinance(requestedPair);
 
-    // Reset displayedPair when requestedPair changes (will be updated after fetch)
+    // Actual pair being displayed (may fallback to DEFAULT_PAIR if requested pair not available)
+    const [displayedPair, setDisplayedPair] = useState(normalizedPair);
+
+    // Reset displayedPair when normalizedPair changes (will be updated after fetch)
     useEffect(() => {
-        setDisplayedPair(requestedPair);
-    }, [requestedPair]);
+        setDisplayedPair(normalizedPair);
+    }, [normalizedPair]);
 
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -268,7 +292,8 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
 
                 // Step 1: Fetch initial data from REST API
                 console.log('📊 Step 1: Fetching initial data from REST API...');
-                const { data: chartData, actualPair } = await fetchChartData(requestedPair, timeframe);
+                console.log('🔄 Requested pair:', requestedPair, '-> Normalized for Binance:', normalizedPair);
+                const { data: chartData, actualPair } = await fetchChartData(normalizedPair, timeframe);
 
                 if (!mounted) {
                     chart.remove();
