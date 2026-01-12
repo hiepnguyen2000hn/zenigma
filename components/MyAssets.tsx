@@ -54,7 +54,7 @@ interface TransferFilters {
 }
 
 const MyAssets = () => {
-  const { authenticated, user } = usePrivy();
+  const { ready, authenticated, user } = usePrivy();
   const { getSymbol } = useTokenMapping();
   const { tokens, isLoading: isLoadingTokens, isLoaded: isTokensLoaded } = useTokens();
   const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
@@ -123,7 +123,15 @@ const MyAssets = () => {
   }, []);
 
   // Handle date changes - Only send when BOTH from_date and to_date are present
+  // Skip on initial mount to prevent duplicate fetch
+  const isDateFilterMounted = useRef(false);
   useEffect(() => {
+    // Skip first render to avoid triggering fetch effect
+    if (!isDateFilterMounted.current) {
+      isDateFilterMounted.current = true;
+      return;
+    }
+
     if (startDate && endDate) {
       // Format to ISO 8601 date string (YYYY-MM-DD)
       const from_date = startDate.toISOString().split('T')[0];
@@ -159,66 +167,84 @@ const MyAssets = () => {
     }
   };
 
-  // Fetch user profile and transfer history - OPTIMIZED with Promise.all
+  // Effect: Fetch profile (nếu cần) và transfers
+  // Deps: user?.id (wallet), isTokensLoaded (tokens ready), filters (user filter change)
   useEffect(() => {
-    if (!authenticated || !user?.id) {
-      setAssets([]);
-      setTransfers([]);
-      return;
-    }
+    // Skip nếu chưa có user hoặc tokens chưa load
+    if (!user?.id || !isTokensLoaded) return;
 
-    // Wait for tokens to be loaded from useTokens hook
-    if (!isTokensLoaded || tokens.length === 0) {
-      console.log('⏳ Waiting for tokens to load...');
-      return;
-    }
+    const walletId = extractPrivyWalletId(user.id);
+    let isCancelled = false;
 
     const fetchData = async () => {
       setLoading(true);
       setError(null);
-      try {
-        const walletId = extractPrivyWalletId(user.id);
-        console.log('✅ Using tokens from hook:', tokens.length, 'tokens');
 
-        // ✅ OPTIMIZED: Check store first, only fetch if missing
-        if (!profile) {
-          console.log('📥 Profile not in store, fetching...');
-          await fetchProfile(walletId);
-        } else {
-          console.log('✅ Using profile from store (no API call)');
+      try {
+        // Step 1: Fetch profile nếu chưa có
+        let currentProfile = profile;
+        if (!currentProfile) {
+          console.log('📥 [MyAssets] Fetching profile...');
+          currentProfile = await fetchProfile(walletId);
         }
 
-        // Fetch transfers (profile is now guaranteed in store)
-        console.log('🔍 Fetching transfers for wallet:', walletId);
-        const transferResponse = await getTransferHistory(walletId, filters);
-        console.log('✅ Transfers loaded:', transferResponse.data?.length || 0, 'transfers');
+        if (isCancelled) return;
 
-        // Calculate assets from profile (from store via hook)
-        if (profile) {
-          const assetsList: Asset[] = tokens.map(token => {
-            const balance = profile.available_balances?.[token.index] || '0';
-            const balanceNum = parseFloat(balance);
-            return {
-              tokenIndex: token.index,
-              balance: balance,
-              value: (balanceNum * 1).toFixed(2), // Mock value calculation
-            };
-          });
-
+        // Step 2: Calculate assets từ profile
+        if (currentProfile) {
+          const assetsList: Asset[] = tokens.map(token => ({
+            tokenIndex: token.index,
+            balance: currentProfile.available_balances?.[token.index] || '0',
+            value: (parseFloat(currentProfile.available_balances?.[token.index] || '0') * 1).toFixed(2),
+          }));
           setAssets(assetsList);
         }
 
+        // Step 3: Fetch transfers
+        console.log('🔄 [MyAssets] Fetching transfers...');
+        const transferResponse = await getTransferHistory(walletId, filters);
+
+        if (isCancelled) return;
         setTransfers(transferResponse.data || []);
       } catch (err) {
-        console.error('❌ Failed to fetch data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch data');
+        console.error('❌ [MyAssets] Failed to fetch data:', err);
+        if (!isCancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to fetch data');
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
-  }, [authenticated, user?.id, isTokensLoaded, tokens, filters, profile, fetchProfile]);
+
+    return () => {
+      isCancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, isTokensLoaded, filters]);
+
+  // Effect 3: Cleanup khi logout
+  useEffect(() => {
+    if (!authenticated) {
+      setAssets([]);
+      setTransfers([]);
+    }
+  }, [authenticated]);
+
+  // Loading screen khi Privy chưa ready
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-black text-white">
+        <Header />
+        <div className="flex items-center justify-center h-[calc(100vh-64px)]">
+          <div className="text-gray-400">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white">
