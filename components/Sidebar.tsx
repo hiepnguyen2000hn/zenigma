@@ -225,7 +225,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 newState,
                 operations
             });
-            if(proofData.publicInputs) {
+            if(!proofData.publicInputs) {
                 toast.error(`Something went wrong"`);
                 return
             }
