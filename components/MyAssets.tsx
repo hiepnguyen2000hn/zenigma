@@ -157,7 +157,7 @@ const MyAssets = () => {
     }
   };
 
-  // Fetch user profile and calculate assets
+  // Fetch user profile and transfer history - OPTIMIZED with Promise.all
   useEffect(() => {
     if (!authenticated || !user?.id) {
       setAssets([]);
@@ -171,22 +171,25 @@ const MyAssets = () => {
       return;
     }
 
-    const fetchAssets = async () => {
+    const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        // Step 1: Use tokens from useTokens hook (already cached)
-        console.log('✅ Using tokens from hook:', tokens.length, 'tokens');
-
-        // Step 2: Fetch user profile
         const walletId = extractPrivyWalletId(user.id);
-        console.log('🔍 Fetching user profile for wallet:', walletId);
-        const profile = await getUserProfile(walletId);
-        console.log('✅ Profile loaded:', profile);
+        console.log('✅ Using tokens from hook:', tokens.length, 'tokens');
+        console.log('🔍 Fetching user profile and transfers for wallet:', walletId);
 
-        // Step 3: Show ALL tokens from API, with balance from profile or 0 if not available
+        // ✅ OPTIMIZED: Run both API calls in parallel
+        const [profile, transferResponse] = await Promise.all([
+          getUserProfile(walletId),
+          getTransferHistory(walletId, filters)
+        ]);
+
+        console.log('✅ Profile loaded:', profile);
+        console.log('✅ Transfers loaded:', transferResponse.data?.length || 0, 'transfers');
+
+        // Calculate assets from profile
         const assetsList: Asset[] = tokens.map(token => {
-          // Get balance from profile by token index, default to '0' if not found
           const balance = profile.available_balances?.[token.index] || '0';
           const balanceNum = parseFloat(balance);
           return {
@@ -197,47 +200,17 @@ const MyAssets = () => {
         });
 
         setAssets(assetsList);
-
-        // Step 4: Fetch transfer history from API
-        console.log('🔍 Fetching transfer history for wallet:', walletId);
-        const transferResponse = await getTransferHistory(walletId, {
-          page: 1,
-          limit: 20,
-        });
-        console.log('✅ Transfer history loaded:', transferResponse);
         setTransfers(transferResponse.data || []);
       } catch (err) {
-        console.error('Failed to fetch assets:', err);
-        setError(err instanceof Error ? err.message : 'Failed to fetch assets');
+        console.error('❌ Failed to fetch data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to fetch data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAssets();
-  }, [authenticated, user?.id, isTokensLoaded, tokens]);
-
-  // Fetch transfer history with filters
-  useEffect(() => {
-    if (!authenticated || !user?.id) {
-      setTransfers([]);
-      return;
-    }
-
-    const fetchTransfers = async () => {
-      try {
-        const walletId = extractPrivyWalletId(user.id);
-        console.log('🔍 [MyAssets] Fetching transfers with filters:', filters);
-        const transferResponse = await getTransferHistory(walletId, filters);
-        console.log('✅ [MyAssets] Transfers fetched:', transferResponse.data?.length || 0, 'transfers');
-        setTransfers(transferResponse.data || []);
-      } catch (err) {
-        console.error('❌ [MyAssets] Failed to fetch transfers:', err);
-      }
-    };
-
-    fetchTransfers();
-  }, [authenticated, user?.id, filters]);
+    fetchData();
+  }, [authenticated, user?.id, isTokensLoaded, tokens, filters]);
 
   return (
     <div className="min-h-screen bg-black text-white">
