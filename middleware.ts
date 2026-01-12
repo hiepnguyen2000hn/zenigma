@@ -26,6 +26,25 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
+  // ✅ Onboarding: Bắt buộc xem landing page trước
+  // Skip nếu đang ở trang chủ
+  if (pathname === '/') {
+    // Set cookie khi visit home
+    const response = NextResponse.next();
+    response.cookies.set('visited_home', 'true', {
+      path: '/',
+      maxAge: 60 * 60 * 24, // 24 hours
+      sameSite: 'lax',
+    });
+    return response;
+  }
+
+  // Check cookie - nếu chưa visit home → redirect về /
+  const hasVisitedHome = request.cookies.get('visited_home');
+  if (!hasVisitedHome) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
   return NextResponse.next();
 }
 
