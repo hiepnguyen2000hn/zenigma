@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, ExternalLink, Circle } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
@@ -55,15 +55,33 @@ interface TransferFilters {
   to_date?: string;
 }
 
+/**
+ * Check if token address is a valid contract (not a placeholder)
+ * Placeholder addresses: 0x0000...0001, 0x0000...0005, etc.
+ * Valid addresses: 0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9
+ */
+const isValidTokenAddress = (address: string): boolean => {
+  if (!address) return false;
+  // Placeholder pattern: 0x followed by 30+ zeros
+  const placeholderPattern = /^0x0{30,}/i;
+  return !placeholderPattern.test(address);
+};
+
 const MyAssets = () => {
   const { ready, authenticated, user } = usePrivy();
   const { getSymbol } = useTokenMapping();
   const { tokens, isLoading: isLoadingTokens, isLoaded: isTokensLoaded } = useTokens();
   const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
-  // Pass tokens from API to read wallet balances for all tokens
-  //TODO: apply multi-chain support
-  console.log(tokens, 'tokens in MyAssets');
-  const { balances: walletBalances, isLoading: isLoadingWalletBalances } = useAllTokenBalances(tokens);
+
+  // Filter tokens with valid contract addresses for balance reading
+  // Only USDC, WETH, USDT (real addresses) will be queried
+  // Placeholder addresses (0x000...001) will return "0" by default
+  const validTokensForBalance = useMemo(() => {
+    return tokens.filter(token => isValidTokenAddress(token.address));
+  }, [tokens]);
+
+  // Pass only valid tokens to read wallet balances
+  const { balances: walletBalances, isLoading: isLoadingWalletBalances } = useAllTokenBalances(validTokensForBalance);
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -178,7 +196,6 @@ const MyAssets = () => {
   // Effect: Fetch profile (nếu cần) và transfers
   // Deps: user?.id (wallet), isTokensLoaded (tokens ready), filters (user filter change)
   useEffect(() => {
-    // Skip nếu chưa có user hoặc tokens chưa load
     if (!user?.id || !isTokensLoaded) return;
 
     const walletId = extractPrivyWalletId(user.id);
