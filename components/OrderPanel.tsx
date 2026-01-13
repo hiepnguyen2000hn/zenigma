@@ -254,7 +254,6 @@ const OrderPanel = () => {
         const intervalId = setInterval(async () => {
             try {
                 const walletId = extractPrivyWalletId(user.id);
-                console.log('🔄 Auto-refetching orders with current filters:', filters);
 
                 const response = await getOrderList(walletId, filters);
                 setOrders(response.data || []);

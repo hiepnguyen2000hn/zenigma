@@ -9,13 +9,14 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useAtomValue, useSetAtom } from 'jotai';
 import { orderInputAtom, toggleOrderSideAtom, tradingPairAtom, updateOrderAmountAtom, updateLimitPriceAtom } from '@/store/trading';
 import { tokensAtom } from '@/store/tokens';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import toast from 'react-hot-toast';
+import { usePathname, useParams } from 'next/navigation';
 
 interface SidebarProps {
     selectedCrypto: string;
@@ -31,7 +32,28 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const toggleSide = useSetAtom(toggleOrderSideAtom);
     const updateAmount = useSetAtom(updateOrderAmountAtom);
     const updatePrice = useSetAtom(updateLimitPriceAtom);
-    const [selectedToken, setSelectedToken] = useState('USDC');
+    const param = useParams();
+    console.log(param, 'param');
+
+    // ✅ Parse base token directly from URL param (e.g., "aave-usdc" → "AAVE")
+    const getBaseTokenFromParam = (): string => {
+        if (typeof param.pair === 'string') {
+            const [baseToken] = param.pair.split('-');
+            return baseToken?.toUpperCase() || 'USDC';
+        }
+        return 'USDC';
+    };
+
+    const [selectedToken, setSelectedToken] = useState(getBaseTokenFromParam());
+
+    // ✅ Sync selectedToken when URL param changes
+    useEffect(() => {
+        const baseToken = getBaseTokenFromParam();
+        if (baseToken !== selectedToken) {
+            console.log(`🔄 [Sidebar] Syncing selectedToken from param: ${selectedToken} → ${baseToken}`);
+            setSelectedToken(baseToken);
+        }
+    }, [param.pair]);
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const { verifyProof, submitOrder, calculateNewState } = useProof();
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
@@ -54,7 +76,6 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
      * Only use profile.balances array, return 0 if not found
      */
     const getTokenBalance = (symbol: string): { pnpmavailable: string; reserved: string; total: string } => {
-        console.log(profile, 'profileBalance')
 
         // ✅ Return 0 if no profile or no balances array
         if (!profile || !profile.balances) {

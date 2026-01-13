@@ -165,18 +165,8 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
     return baseToken ? baseToken.toUpperCase() : null;
   };
 
-  // ✅ Priority: URL token > selectedToken prop
-  const urlToken = getTokenFromUrl();
-  const effectiveToken = urlToken || selectedToken;
-  const selected = tokens.find((t) => t.symbol === effectiveToken) || tokens[0];
-
-  // ✅ Auto-update parent when URL changes (sync URL -> state)
-  useEffect(() => {
-    if (urlToken && urlToken !== selectedToken) {
-      console.log(`🔄 [TokenSelector] URL changed -> Auto-selecting ${urlToken}`);
-      onSelectToken(urlToken);
-    }
-  }, [urlToken, selectedToken, onSelectToken]);
+  // ✅ Priority: selectedToken prop (parent controls state)
+  const selected = tokens.find((t) => t.symbol === selectedToken) || tokens[0];
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -220,7 +210,8 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
           symbol: newPairSymbol,
         });
 
-        // ✅ Update URL without reload page
+        // ✅ Update URL without full page re-render (performance optimization)
+        // Chart will handle WebSocket cleanup automatically when normalizedPair changes
         window.history.pushState({}, '', newUrl);
       }
     }
@@ -318,7 +309,7 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
                           whileTap={{ scale: 0.98 }}
                           onClick={() => handleSelectToken(token)}
                           className={`w-full flex items-center space-x-4 p-4 rounded-lg transition-colors ${
-                            token.symbol === effectiveToken
+                            token.symbol === selectedToken
                               ? "bg-white/10 border border-white/20"
                               : "hover:bg-white/5"
                           }`}
@@ -328,7 +319,7 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
                             <div className="font-medium text-white">{token.symbol}</div>
                             <div className="text-sm text-gray-400">{token.name}</div>
                           </div>
-                          {token.symbol === effectiveToken && (
+                          {token.symbol === selectedToken && (
                             <motion.div
                               initial={{ scale: 0 }}
                               animate={{ scale: 1 }}

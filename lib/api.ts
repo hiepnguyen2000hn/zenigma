@@ -83,7 +83,6 @@ apiClient.addErrorInterceptor(async (error) => {
 // Thêm request interceptor để log requests (optional)
 apiClient.addRequestInterceptor(async (config) => {
   if (process.env.NODE_ENV === 'development') {
-    console.log('API Request:', config.method, config);
   }
   return config;
 });
@@ -91,7 +90,6 @@ apiClient.addRequestInterceptor(async (config) => {
 // Thêm response interceptor để log responses (optional)
 apiClient.addResponseInterceptor(async (response) => {
   if (process.env.NODE_ENV === 'development') {
-    console.log('API Response:', response.status, response.data);
   }
   return response;
 });

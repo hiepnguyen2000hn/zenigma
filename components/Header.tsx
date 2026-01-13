@@ -263,7 +263,7 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
         <header className="border-b border-gray-800 bg-black">
             <div className="flex items-center justify-between px-6 py-4">
                 <div className="flex items-center space-x-8">
-                    <div className="relative group cursor-pointer">
+                    <Link href="/" className="relative group cursor-pointer">
                         <div className="absolute -inset-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full blur-lg opacity-30 group-hover:opacity-60 transition-opacity duration-500 animate-pulse"></div>
                         <div className="relative">
                             <Image
@@ -275,7 +275,7 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
                                 priority
                             />
                         </div>
-                    </div>
+                    </Link>
 
                     <nav className="flex items-center space-x-6">
                         <Link

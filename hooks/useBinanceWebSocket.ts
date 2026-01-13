@@ -55,13 +55,35 @@ export const useBinanceWebSocket = ({
   const maxReconnectAttempts = 5;
   const reconnectDelay = 3000; // 3 seconds
 
+  // Store callback in ref to avoid recreating connect when callback changes
+  const onKlineUpdateRef = useRef(onKlineUpdate);
+
+  // Update ref when callback changes (without triggering reconnect)
+  useEffect(() => {
+    onKlineUpdateRef.current = onKlineUpdate;
+  }, [onKlineUpdate]);
+
   const connect = useCallback(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // If disabled, ensure any existing connection is closed
+      if (wsRef.current) {
+        console.log('🔌 Disabled - Closing existing WebSocket');
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      return;
+    }
 
     try {
-      // Clean up existing connection
+      // Clean up existing connection FIRST
       if (wsRef.current) {
-        wsRef.current.close();
+        const oldState = wsRef.current.readyState;
+        console.log(`🔌 Closing existing WebSocket (state: ${oldState})`);
+
+        // Force close regardless of state
+        if (oldState === WebSocket.OPEN || oldState === WebSocket.CONNECTING) {
+          wsRef.current.close();
+        }
         wsRef.current = null;
       }
 
@@ -100,7 +122,7 @@ export const useBinanceWebSocket = ({
             }
 
             // Call the callback with the kline data and whether it's closed
-            onKlineUpdate(klineData, kline.x);
+            onKlineUpdateRef.current(klineData, kline.x);
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -132,7 +154,7 @@ export const useBinanceWebSocket = ({
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);
     }
-  }, [symbol, interval, onKlineUpdate, enabled]);
+  }, [symbol, interval, enabled]);
 
   useEffect(() => {
     connect();

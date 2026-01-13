@@ -39,15 +39,11 @@ function getTokensFromCache(): Token[] | null {
 
     // Check if cache expired
     if (now > cacheData.expiresAt) {
-      console.log('⏰ Cache expired, removing...');
+
       localStorage.removeItem(CACHE_KEY);
       return null;
     }
 
-    console.log('✅ Cache hit! Using cached tokens');
-    console.log(`  - Cached at: ${new Date(cacheData.timestamp).toLocaleString()}`);
-    console.log(`  - Expires at: ${new Date(cacheData.expiresAt).toLocaleString()}`);
-    console.log(`  - Tokens count: ${cacheData.data.length}`);
 
     return cacheData.data;
   } catch (err) {
@@ -72,8 +68,6 @@ function saveTokensToCache(tokens: Token[]): void {
     };
 
     localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
-    console.log('💾 Tokens cached to localStorage');
-    console.log(`  - Will expire in: ${CACHE_DURATION / 1000 / 60 / 60} hours`);
   } catch (err) {
     console.error('❌ Error saving cache:', err);
   }

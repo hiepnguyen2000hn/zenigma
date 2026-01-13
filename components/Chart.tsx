@@ -57,14 +57,6 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
     // Normalize wrapped tokens for Binance API (WETH -> ETH, WBNB -> BNB)
     const normalizedPair = normalizePairForBinance(requestedPair);
 
-    // Actual pair being displayed (may fallback to DEFAULT_PAIR if requested pair not available)
-    const [displayedPair, setDisplayedPair] = useState(normalizedPair);
-
-    // Reset displayedPair when normalizedPair changes (will be updated after fetch)
-    useEffect(() => {
-        setDisplayedPair(normalizedPair);
-    }, [normalizedPair]);
-
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -176,10 +168,15 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
         }
     }, []);
 
+    // Disable WebSocket BEFORE pair/timeframe changes to ensure old socket is closed
+    useEffect(() => {
+        setIsWebSocketReady(false);
+    }, [normalizedPair, timeframe]);
+
     // Initialize WebSocket connection after initial data load
-    // Use displayedPair (which may be fallback) instead of requestedPair
+    // Use normalizedPair for consistent pair tracking
     const { isConnected } = useBinanceWebSocket({
-        symbol: displayedPair,
+        symbol: normalizedPair,
         interval: timeframe,
         onKlineUpdate: handleKlineUpdate,
         enabled: isWebSocketReady,
@@ -191,8 +188,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
         // Dynamic import for lightweight-charts
         const initChart = async () => {
             try {
-                // Disable WebSocket when reinitializing
-                setIsWebSocketReady(false);
+                // WebSocket already disabled by previous useEffect
 
                 // Cleanup existing chart first
                 if (chartRef.current) {
@@ -276,9 +272,6 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
                     chart.remove();
                     return;
                 }
-
-                // Update displayed pair (may be different from requested if fallback occurred)
-                setDisplayedPair(actualPair);
 
                 if (chartData && chartData.length > 0) {
                     // Convert Binance data to lightweight-charts format
@@ -427,7 +420,7 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
 
                     <div className="flex items-center space-x-4 text-sm">
                         <div className="flex items-center space-x-2">
-                            <span className="text-gray-400">{displayedPair.toUpperCase()} • {timeframe} • BINANCE</span>
+                            <span className="text-gray-400">{normalizedPair.toUpperCase()} • {timeframe} • BINANCE</span>
                             <span className={`w-2 h-2 rounded-full ${
                                 loading ? 'bg-yellow-500' :
                                 error ? 'bg-red-500' :
