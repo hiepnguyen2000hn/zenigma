@@ -9,7 +9,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useAtomValue, useSetAtom } from 'jotai';
 import { orderInputAtom, toggleOrderSideAtom, tradingPairAtom, updateOrderAmountAtom, updateLimitPriceAtom } from '@/store/trading';
 import { tokensAtom } from '@/store/tokens';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
@@ -33,6 +33,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const updatePrice = useSetAtom(updateLimitPriceAtom);
     const [selectedToken, setSelectedToken] = useState('USDC');
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [processingStep, setProcessingStep] = useState('');
     const { verifyProof, submitOrder, calculateNewState } = useProof();
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
     const { profile, fetchProfile } = useUserProfile();
@@ -85,19 +87,36 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
 
     // Callback to handle buy/sell order (similar to hdlUpdateWallet in Header.tsx)
     const handleTradeOrder = async () => {
+        // ✅ Validate amount before proceeding
+        if (!amountValidation.isValid) {
+            toast.error(amountValidation.error || 'Invalid amount');
+            return;
+        }
+
+        // ✅ Check if amount is empty or zero
+        if (!orderInput.amount || parseFloat(orderInput.amount) <= 0) {
+            toast.error('Please enter a valid amount');
+            return;
+        }
+
         try {
+            // ✅ Start processing
+            setIsProcessing(true);
+            setProcessingStep('Initializing order...');
             console.log('🚀 Step 1: Creating order...');
 
             // Get wallet address
             const walletAddress = wallets.find(wallet => wallet.connectorType === 'embedded')?.address;
             if (!walletAddress) {
                 toast.error('Please connect wallet first!');
+                setIsProcessing(false);
                 return;
             }
 
             // Get Privy user ID
             if (!user?.id) {
                 toast.error('Please authenticate with Privy first!');
+                setIsProcessing(false);
                 return;
             }
 
@@ -105,6 +124,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             const walletId = extractPrivyWalletId(user.id);
 
             // ✅ Fetch user profile and auto-update store
+            setProcessingStep('Fetching wallet state...');
             console.log('📊 Step 2: Fetching user profile...');
             console.log('  - Full Privy user ID:', user.id);
             console.log('  - Wallet ID (without prefix):', walletId);
@@ -127,6 +147,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                         boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)',
                     },
                 });
+                setIsProcessing(false);
                 return;
             }
 
@@ -142,8 +163,11 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             const availableSlot = oldState.orders_list.findIndex(order => order === null);
             if (availableSlot === -1) {
                 toast.error('No available order slots! All 4 slots are full.');
+                setIsProcessing(false);
                 return;
             }
+
+            setProcessingStep('Calculating new state...');
 
             // ✅ Get token indices from tokens store (dynamic lookup)
             const baseTokenIndex = getTokenIndex(pair.base);    // WBTC/BTC -> lấy từ store
@@ -212,6 +236,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             });
 
             // Generate proof
+            setProcessingStep('Generating proof (this may take a moment)...');
             console.log('🔐 Step 4: Generating wallet update proof...', newState);
             const userSecret = '12312'; // TODO: Get from secure storage
 
@@ -226,19 +251,22 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 operations
             });
             if(!proofData.publicInputs) {
-                toast.error(`Something went wrong"`);
-                return
+                toast.error('Something went wrong');
+                setIsProcessing(false);
+                return;
             }
 
             console.log('✅ Proof generated:', proofData);
 
             // Sign newCommitment
+            setProcessingStep('Signing transaction...');
             console.log('🔍 Step 5: Signing newCommitment...');
             const newCommitment = proofData.publicInputs.new_wallet_commitment;
             const rootSignature = await signMessageWithSkRoot(newCommitment);
             console.log('✅ Signature created');
 
             // ✅ Submit order to CREATE_ORDER endpoint
+            setProcessingStep('Submitting order...');
             console.log('🔍 Step 6: Submitting order to CREATE_ORDER endpoint...');
             const submitResult = await submitOrder({
                 proof: proofData.proof,
@@ -255,9 +283,13 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 toast.error(`Order submission failed: ${submitResult.error}`);
             }
 
+            // ✅ Done processing
+            setIsProcessing(false);
+
         } catch (error) {
             console.error('❌ Error creating order:', error);
-            toast.error(`Something went wrong"`);
+            toast.error('Something went wrong');
+            setIsProcessing(false);
         }
     };
 
@@ -269,8 +301,53 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const baseBalance = getTokenBalance(baseSymbol);
     const quoteBalance = getTokenBalance(quoteSymbol);
 
+    // ✅ Validate amount against available balance
+    const amountValidation = useMemo(() => {
+        const amount = parseFloat(orderInput.amount || '0');
+        const price = parseFloat(orderInput.limitPrice || '1');
+
+        // Skip validation if amount is 0 or empty
+        if (!orderInput.amount || amount <= 0) {
+            return { isValid: true, error: null };
+        }
+
+        if (orderInput.side === 'buy') {
+            // BUY: Need amount * price in quote token (USDC)
+            const requiredQuote = amount * price;
+            const availableQuote = parseFloat(quoteBalance.available || '0');
+
+            if (requiredQuote > availableQuote) {
+                return {
+                    isValid: false,
+                    error: `Insufficient ${quoteSymbol}. Need ${requiredQuote.toFixed(2)}, have ${availableQuote.toFixed(2)}`
+                };
+            }
+        } else {
+            // SELL: Need amount in base token (WBTC)
+            const availableBase = parseFloat(baseBalance.available || '0');
+
+            if (amount > availableBase) {
+                return {
+                    isValid: false,
+                    error: `Insufficient ${baseSymbol}. Need ${amount.toFixed(6)}, have ${availableBase.toFixed(6)}`
+                };
+            }
+        }
+
+        return { isValid: true, error: null };
+    }, [orderInput.amount, orderInput.limitPrice, orderInput.side, baseBalance.available, quoteBalance.available, baseSymbol, quoteSymbol]);
+
     return (
         <>
+            {/* ✅ Fullscreen Loading Overlay - shows when processing order */}
+            {isProcessing && (
+                <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
+                    <div className="w-20 h-20 border-4 border-teal-500/30 border-t-teal-500 rounded-full animate-spin"></div>
+                    <div className="text-white font-medium text-xl mt-6">{processingStep}</div>
+                    <div className="text-gray-400 text-sm mt-2">Please wait, do not close this window...</div>
+                </div>
+            )}
+
             <aside className="w-80 border-r border-gray-800 bg-black">
                 <div className="p-4 border-b border-gray-800">
                     {/* ✅ Token Balances and Deposit in One Row */}
@@ -326,20 +403,33 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 </div>
 
                 <div className="space-y-4">
-                    {/* ✅ Amount Input */}
+                    {/* ✅ Amount Input with Validation */}
                     <div>
                         <label className="block text-sm text-gray-400 mb-2">Amount</label>
-                        <div className="flex items-center bg-gray-900 rounded-lg px-4 py-3 border border-gray-800">
+                        <div className={`flex items-center bg-gray-900 rounded-lg px-4 py-3 border transition-colors ${
+                            !amountValidation.isValid
+                                ? 'border-red-500'
+                                : 'border-gray-800'
+                        }`}>
                             <input
                                 type="text"
                                 placeholder="0.00"
                                 value={orderInput.amount}
                                 onChange={(e) => updateAmount(e.target.value)}
-                                className="bg-transparent flex-1 outline-none text-white"
+                                className={`bg-transparent flex-1 outline-none ${
+                                    !amountValidation.isValid ? 'text-red-400' : 'text-white'
+                                }`}
                             />
                             <span className="text-white font-medium ml-2">{pair.base}</span>
                             <ArrowLeftRight className="w-4 h-4 text-gray-400 ml-2" />
                         </div>
+
+                        {/* Error Message */}
+                        {!amountValidation.isValid && amountValidation.error && (
+                            <p className="text-red-500 text-xs mt-1 px-1">
+                                {amountValidation.error}
+                            </p>
+                        )}
 
                         <div className="flex items-center justify-between mt-2 px-1">
                             <button className="text-xs text-gray-400 hover:text-white">25%</button>

@@ -13,6 +13,7 @@ import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import toast from 'react-hot-toast';
 import { useTokens } from '@/hooks/useTokens';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 // Order status mapping (from API string to UI display)
 const ORDER_STATUS = {
@@ -42,6 +43,7 @@ const OrderPanel = () => {
     const { wallets } = useWallets();
     const { getSymbol } = useTokenMapping();
     const { tokens } = useTokens();
+    const { profile } = useUserProfile();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -217,7 +219,15 @@ const OrderPanel = () => {
 
     // Fetch orders on mount and when filters/authenticated changes
     useEffect(() => {
+        // ✅ Don't fetch if not authenticated or no user
         if (!authenticated || !user?.id) {
+            setOrders([]);
+            return;
+        }
+
+        // ✅ Don't fetch if profile is not initialized
+        if (!profile?.is_initialized) {
+            console.log('⏳ [OrderPanel] Profile not initialized, skipping order fetch');
             setOrders([]);
             return;
         }
@@ -247,7 +257,13 @@ const OrderPanel = () => {
 
     // Auto refetch every 5 seconds with current filters
     useEffect(() => {
+        // ✅ Don't auto-refetch if not authenticated or no user
         if (!authenticated || !user?.id) {
+            return;
+        }
+
+        // ✅ Don't auto-refetch if profile is not initialized
+        if (!profile?.is_initialized) {
             return;
         }
 
@@ -465,12 +481,13 @@ const OrderPanel = () => {
                                 Loading orders...
                             </td>
                         </tr>
-                    ) : error ? (
-                        <tr>
-                            <td colSpan={9} className="text-center py-20 text-red-500">
-                                Error: {error}
-                            </td>
-                        </tr>
+                    // ) : error ? (
+                    //     <tr>
+                    //         <td colSpan={9} className="text-center py-20 text-red-500">
+                    //             Error: {error}
+                    //         </td>
+                    //     </tr>
+                    // )
                     ) : !hasOrders ? (
                         <tr>
                             <td colSpan={9} className="text-center py-20 text-gray-400">
