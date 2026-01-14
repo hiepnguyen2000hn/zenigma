@@ -11,7 +11,7 @@ import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { getAvailableERC20Tokens } from '@/lib/constants';
 import { TokenIconBySymbol } from './TokenSelector';
 import DepositModal from './DepositModal';
-import { X, ChevronRight, ChevronUp, ChevronDown, Copy, ExternalLink } from 'lucide-react';
+import { X, ChevronRight, ChevronUp, ChevronDown, Copy, ExternalLink, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import * as Popover from '@radix-ui/react-popover';
@@ -241,14 +241,22 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                     }`}
                                 >
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-9 h-9 rounded-lg bg-gray-800 flex items-center justify-center">
-                                            <span className="text-white font-bold text-lg">Z</span>
+                                        <div className="w-9 h-9 rounded-lg bg-gray-800 flex items-center justify-center border border-dashed border-gray-600">
+                                            {zenigmaAddress ? (
+                                                <span className="text-white font-bold text-lg">Z</span>
+                                            ) : (
+                                                <Plus size={18} className="text-gray-500" />
+                                            )}
                                         </div>
                                         <div>
-                                            <div className="text-white font-medium text-sm">Zenigma Wallet</div>
-                                            <div className="text-gray-500 text-xs">
-                                                {zenigmaAddress ? formatAddress(zenigmaAddress) : 'Click to initialize'}
+                                            <div className="text-white font-medium text-sm">
+                                                {zenigmaAddress ? 'Zenigma Wallet' : 'Sign in to Zenigma'}
                                             </div>
+                                            {zenigmaAddress && (
+                                                <div className="text-gray-500 text-xs">
+                                                    {formatAddress(zenigmaAddress)}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     {zenigmaAddress && (
@@ -323,17 +331,25 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                     }`}
                                 >
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-9 h-9 rounded-lg bg-[#213147] flex items-center justify-center overflow-hidden">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" fill="#28A0F0"/>
-                                                <path d="M12 2L3 7L12 12L21 7L12 2Z" fill="#96BEDC"/>
-                                            </svg>
+                                        <div className="w-9 h-9 rounded-lg bg-[#213147] flex items-center justify-center overflow-hidden border border-dashed border-gray-600">
+                                            {privyWalletAddress ? (
+                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" fill="#28A0F0"/>
+                                                    <path d="M12 2L3 7L12 12L21 7L12 2Z" fill="#96BEDC"/>
+                                                </svg>
+                                            ) : (
+                                                <Plus size={18} className="text-gray-500" />
+                                            )}
                                         </div>
                                         <div>
-                                            <div className="text-white font-medium text-sm">Sepolia Wallet</div>
-                                            <div className="text-gray-500 text-xs">
-                                                {privyWalletAddress ? formatAddress(privyWalletAddress) : 'Click to connect'}
+                                            <div className="text-white font-medium text-sm">
+                                                {privyWalletAddress ? 'Sepolia Wallet' : 'Connect Wallet'}
                                             </div>
+                                            {privyWalletAddress && (
+                                                <div className="text-gray-500 text-xs">
+                                                    {formatAddress(privyWalletAddress)}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     {privyWalletAddress && (
@@ -469,10 +485,10 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                             stiffness: 300,
                                             damping: 25,
                                         }}
-                                        className={`p-2 rounded-lg border transition-all duration-200 ${
+                                        className={`p-2 rounded-lg border transition-all duration-200 cursor-pointer ${
                                             hasBalance
-                                                ? 'bg-gray-900/50 border-gray-800 hover:border-teal-500/50'
-                                                : 'bg-gray-900/20 border-gray-800/50 opacity-50'
+                                                ? 'bg-gray-900/50 border-gray-800 hover:bg-gray-800/80 hover:border-teal-500/60 hover:scale-[1.02] hover:translate-x-1 hover:shadow-lg hover:shadow-teal-500/10'
+                                                : 'bg-gray-900/20 border-gray-800/50 opacity-50 hover:opacity-70 hover:bg-gray-900/30'
                                         }`}
                                     >
                                         <div className="flex items-center justify-between">
