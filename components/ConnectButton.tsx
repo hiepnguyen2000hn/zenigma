@@ -208,7 +208,7 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSideba
     });
 
     useEffect(() => {
-        console.log("ConnectButton Debug:", { authenticated, user });
+
     }, [authenticated, user]);
 
     const handleClick = async() => {

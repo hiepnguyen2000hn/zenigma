@@ -217,71 +217,62 @@ const OrderPanel = () => {
         }
     };
 
-    // Fetch orders on mount and when filters/authenticated changes
+    // Fetch orders on mount + setup interval (depends on auth/profile only)
     useEffect(() => {
-        // ✅ Don't fetch if not authenticated or no user
         if (!authenticated || !user?.id) {
             setOrders([]);
             return;
         }
 
-        // ✅ Don't fetch if profile is not initialized
         if (!profile?.is_initialized) {
             console.log('⏳ [OrderPanel] Profile not initialized, skipping order fetch');
             setOrders([]);
             return;
         }
 
-        const fetchOrders = async () => {
-            setLoading(true);
-            setError(null);
+        const fetchOrders = async (showLoading = false) => {
+            if (showLoading) {
+                setLoading(true);
+                setError(null);
+            }
             try {
-                // ✅ Extract wallet_id from Privy user ID
                 const walletId = extractPrivyWalletId(user.id);
                 console.log('🔍 [OrderPanel] Fetching orders with filters:', filters);
-                console.log('  - Wallet ID:', walletId);
-
                 const response = await getOrderList(walletId, filters);
                 console.log('✅ [OrderPanel] Orders fetched:', response.data?.length || 0, 'orders');
                 setOrders(response.data || []);
             } catch (err) {
                 console.error('❌ [OrderPanel] Failed to fetch orders:', err);
-                setError(err instanceof Error ? err.message : 'Failed to fetch orders');
+                if (showLoading) {
+                    setError(err instanceof Error ? err.message : 'Failed to fetch orders');
+                }
             } finally {
-                setLoading(false);
+                if (showLoading) {
+                    setLoading(false);
+                }
             }
         };
 
-        fetchOrders();
-    }, [authenticated, user?.id, filters]);
+        // Initial fetch with loading state
+        fetchOrders(true);
 
-    // Auto refetch every 5 seconds with current filters
-    useEffect(() => {
-        // ✅ Don't auto-refetch if not authenticated or no user
-        if (!authenticated || !user?.id) {
-            return;
-        }
+        // Setup interval for auto-refetch (without loading state)
+        const intervalId = setInterval(() => fetchOrders(false), 5000);
 
-        // ✅ Don't auto-refetch if profile is not initialized
-        if (!profile?.is_initialized) {
-            return;
-        }
-
-        const intervalId = setInterval(async () => {
-            try {
-                const walletId = extractPrivyWalletId(user.id);
-                console.log('🔄 Auto-refetching orders with current filters:', filters);
-
-                const response = await getOrderList(walletId, filters);
-                setOrders(response.data || []);
-            } catch (err) {
-                console.error('Auto-refetch failed:', err);
-            }
-        }, 5000); // Refetch every 5 seconds
-
-        // Cleanup interval on unmount or when dependencies change
         return () => clearInterval(intervalId);
-    }, [authenticated, user?.id, filters]);
+    }, [authenticated, user?.id, profile?.is_initialized]);
+
+    // Refetch immediately when filters change
+    useEffect(() => {
+        if (!authenticated || !user?.id || !profile?.is_initialized) return;
+
+        const walletId = extractPrivyWalletId(user.id);
+        console.log('🔄 [OrderPanel] Filters changed, refetching:', filters);
+
+        getOrderList(walletId, filters)
+            .then(response => setOrders(response.data || []))
+            .catch(err => console.error('Filter refetch failed:', err));
+    }, [filters]);
 
     const hasOrders = orders.length > 0;
     return (

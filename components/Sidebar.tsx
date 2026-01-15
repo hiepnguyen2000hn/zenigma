@@ -67,7 +67,6 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
      * Only use profile.balances array, return 0 if not found
      */
     const getTokenBalance = (symbol: string): { pnpmavailable: string; reserved: string; total: string } => {
-        console.log(profile, 'profileBalance')
 
         // ✅ Return 0 if no profile or no balances array
         if (!profile || !profile.balances) {

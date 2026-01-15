@@ -32,9 +32,9 @@ export default function BalanceProvider({ children }: { children: React.ReactNod
   // Log khi connect/disconnect
   useEffect(() => {
     if (isConnected) {
-      console.log('✅ Wallet connected - Balances loaded');
+
     } else {
-      console.log('❌ Wallet disconnected - Balances cleared');
+
     }
   }, [isConnected]);
 

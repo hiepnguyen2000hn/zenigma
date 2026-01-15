@@ -110,15 +110,6 @@ export const TokenIcon = ({ token, size = "md" }: TokenIconProps) => {
     lg: "text-3xl",
   };
 
-  // 🔍 DEBUG: Log token info
-  useEffect(() => {
-    console.log(`🪙 [TokenIcon] ${token.symbol}:`, {
-      symbol: token.symbol,
-      iconUrl: iconUrl,
-      hasError: imageError,
-    });
-  }, [token.symbol, iconUrl, imageError]);
-
   // If no icon URL or image failed to load, show emoji
   if (!iconUrl || imageError) {
     return <span className={`${emojiSizes[size]} ${display.color}`}>{display.icon}</span>;
@@ -136,7 +127,7 @@ export const TokenIcon = ({ token, size = "md" }: TokenIconProps) => {
         setImageError(true);
       }}
       onLoad={() => {
-        console.log(`✅ [CoinCap CDN Success] ${token.symbol}:`, iconUrl);
+
       }}
     />
   );
@@ -173,7 +164,6 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
   // ✅ Auto-update parent when URL changes (sync URL -> state)
   useEffect(() => {
     if (urlToken && urlToken !== selectedToken) {
-      console.log(`🔄 [TokenSelector] URL changed -> Auto-selecting ${urlToken}`);
       onSelectToken(urlToken);
     }
   }, [urlToken, selectedToken, onSelectToken]);
@@ -211,7 +201,6 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
         const newPairSymbol = `${token.symbol.toLowerCase()}-${quoteToken || 'usdc'}`;
         const newUrl = `/TradingDashboard/${newPairSymbol}`;
 
-        console.log(`🔄 [TokenSelector] Updating pair to: ${newPairSymbol}`);
 
         // ✅ Update store (triggers Chart re-render)
         updateTradingPair({

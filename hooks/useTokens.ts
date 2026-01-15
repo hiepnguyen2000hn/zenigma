@@ -44,10 +44,7 @@ function getTokensFromCache(): Token[] | null {
       return null;
     }
 
-    console.log('✅ Cache hit! Using cached tokens');
-    console.log(`  - Cached at: ${new Date(cacheData.timestamp).toLocaleString()}`);
-    console.log(`  - Expires at: ${new Date(cacheData.expiresAt).toLocaleString()}`);
-    console.log(`  - Tokens count: ${cacheData.data.length}`);
+
 
     return cacheData.data;
   } catch (err) {

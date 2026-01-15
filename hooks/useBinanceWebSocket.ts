@@ -116,18 +116,18 @@ export const useBinanceWebSocket = ({
         wsRef.current = null;
 
         // Attempt to reconnect if not manually closed and enabled
-        if (enabled && reconnectAttemptsRef.current < maxReconnectAttempts) {
-          reconnectAttemptsRef.current += 1;
-          console.log(
-            `🔄 Reconnecting... (Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`
-          );
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, reconnectDelay);
-        } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-          console.error('❌ Max reconnection attempts reached');
-        }
+        // if (enabled && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        //   reconnectAttemptsRef.current += 1;
+        //   console.log(
+        //     `🔄 Reconnecting... (Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`
+        //   );
+        //
+        //   reconnectTimeoutRef.current = setTimeout(() => {
+        //     connect();
+        //   }, reconnectDelay);
+        // } else if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+        //   console.error('❌ Max reconnection attempts reached');
+        // }
       };
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);

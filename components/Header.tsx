@@ -22,9 +22,8 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
     const { profile } = useUserProfile();
 
     const fetchTokens = async () => {
-        console.log('call token')
         const response = await getAllTokens()
-        console.log('Tokens:', response);
+
     }
 
     const hdlGenWallet = async() => {

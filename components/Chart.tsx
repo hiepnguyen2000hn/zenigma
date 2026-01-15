@@ -39,10 +39,16 @@ const normalizePairForBinance = (pair: string): string => {
     const tokenMap: Record<string, string> = {
         'weth': 'eth',
         'wbnb': 'bnb',
+        'wbtc': 'btc',
     };
 
     // Normalize base token if it's wrapped
     const normalizedBase = tokenMap[base] || base;
+
+    // Special case: Binance only has USDCUSDT, not USDTUSDC
+    if (normalizedBase === 'usdt' && quote === 'usdc') {
+        return 'usdc-usdt';
+    }
 
     // Return normalized pair
     return `${normalizedBase}-${quote}`;
@@ -177,9 +183,9 @@ const Chart = ({ crypto = 'BTC', pair = 'btc-usdt' }: ChartProps) => {
     }, []);
 
     // Initialize WebSocket connection after initial data load
-    // Use displayedPair (which may be fallback) instead of requestedPair
+    // Use normalizedPair directly for sync pair switching (avoid race condition with displayedPair state)
     const { isConnected } = useBinanceWebSocket({
-        symbol: displayedPair,
+        symbol: normalizedPair,
         interval: timeframe,
         onKlineUpdate: handleKlineUpdate,
         enabled: isWebSocketReady,
