@@ -1,11 +1,12 @@
 "use client";
 
-import { usePrivy, useLogin, useLogout } from "@privy-io/react-auth";
+import { usePrivy, useLogin, useLogout, useWallets } from "@privy-io/react-auth";
 import { Wallet, LogOut } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { auth } from "@/lib/api";
-import { extractPrivyWalletId } from "@/lib/wallet-utils";
+import { extractPrivyWalletId, determineLoginMethodType } from "@/lib/wallet-utils";
 import { clearWalletKeysExternal } from "@/store/walletKeys";
+import { setLoginMethodExternal, clearLoginMethodExternal } from "@/store/loginMethod";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import toast from "react-hot-toast";
 
@@ -19,6 +20,7 @@ interface ConnectButtonProps {
 const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSidebar }: ConnectButtonProps) => {
     const { authenticated, user, getAccessToken } = usePrivy();
     const { logout } = useLogout();
+    const { wallets } = useWallets();
 
     // ✅ Use profile hook for state management
     const { profile, loading: profileLoading, fetchProfile, clearProfile } = useUserProfile();
@@ -130,7 +132,7 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSideba
     };
 
     const { login } = useLogin({
-        onComplete: async (user, isNewUser, wasAlreadyAuthenticated, loginMethod, loginAccount) => {
+        onComplete: async ({user, isNewUser, wasAlreadyAuthenticated, loginMethod, loginAccount}) => {
             // ✅ Skip if already processing
             if (isProcessingLogin.current) {
                 console.log("⏭️ Skipping duplicate onComplete call");
@@ -155,7 +157,10 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSideba
                     console.error("Failed to get Privy access token");
                     return;
                 }
-
+                if(user.wallet.connectorType === 'embedded') {
+                    console.log(wallets, 'embedded wallet connected');
+                    const walletExternal = wallets.map(w => w.disconted());
+                }
                 console.log("Privy token:", privyToken);
 
                 // Call backend API để đổi Privy token lấy backend token
@@ -187,7 +192,12 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSideba
                     await auth.setTokens(data.access_token, data.refresh_token);
                     console.log("✅ Backend tokens saved successfully to cookies");
 
-                    // ✅ Step 3: Load user profile using dedicated function
+                    // ✅ Step 3: Determine and save login method type (embedded vs external)
+                    const methodType = determineLoginMethodType(wallets);
+                    setLoginMethodExternal(methodType);
+                    console.log("✅ Login method saved:", methodType);
+
+                    // ✅ Step 4: Load user profile using dedicated function
                     await loadUserProfile(user);
                 } else {
                     console.error("❌ No access_token in backend response");
@@ -234,14 +244,17 @@ const ConnectButton = ({ className = "", onClick, onLoginSuccess, onToggleSideba
             clearWalletKeysExternal();
             console.log('✅ Cleared wallet keys atom');
 
-            // ✅ Step 3: Clear profile to reset balances UI
+            // ✅ Step 3: Clear login method
+            clearLoginMethodExternal();
+            console.log('✅ Cleared login method');
 
+            // ✅ Step 4: Clear profile to reset balances UI
             console.log('✅ Cleared profile');
 
-            // ✅ Step 4: Clear backend tokens
+            // ✅ Step 5: Clear backend tokens
             await auth.clearTokens();
 
-            // ✅ Step 5: Call Privy logout
+            // ✅ Step 6: Call Privy logout
             await logout();
             await clearProfile();
             console.log('✅ Logout completed successfully');

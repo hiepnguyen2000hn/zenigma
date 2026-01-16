@@ -21,7 +21,6 @@ const TradingActionButton = ({ className = "", onClick }: TradingActionButtonPro
     const [isProcessing, setIsProcessing] = useState(false);
 
     const handleClick = async () => {
-
         setIsProcessing(true);
         try {
             // Get embedded wallet address

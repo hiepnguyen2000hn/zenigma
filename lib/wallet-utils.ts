@@ -372,3 +372,29 @@ export function getEmbeddedWallet<T extends PrivyWallet>(wallets: T[]): T | unde
 export function getEmbeddedWalletAddress<T extends PrivyWallet>(wallets: T[]): string | undefined {
   return getWalletAddressByConnectorType(wallets, 'embedded');
 }
+
+/**
+ * Determine login method type based on wallet connector types
+ *
+ * Returns 'external' if any wallet is injected, wallet_connect, coinbase_wallet, or external
+ * Returns 'embedded' otherwise (Privy embedded wallet from email/google/etc)
+ *
+ * @param wallets - Array of wallets from useWallets hook
+ * @returns 'embedded' | 'external'
+ *
+ * @example
+ * const { wallets } = useWallets();
+ * const methodType = determineLoginMethodType(wallets);
+ * // methodType = 'external' if MetaMask connected, 'embedded' if email/google login
+ */
+export function determineLoginMethodType<T extends PrivyWallet>(
+  wallets: T[]
+): 'embedded' | 'external' {
+  const hasExternal = wallets.some(wallet =>
+    wallet.connectorType === 'injected' ||
+    wallet.connectorType === 'wallet_connect' ||
+    wallet.connectorType === 'coinbase_wallet' ||
+    wallet.connectorType === 'external'
+  );
+  return hasExternal ? 'external' : 'embedded';
+}
