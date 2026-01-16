@@ -387,7 +387,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                         </div>
 
                         {/* Column 3: Deposit Button - only show when wallet is initialized */}
-                        {profile?.is_initialized && (
+                        {profile?.is_initialized && keys?.pk_root && (
                             <button
                                 onClick={() => setIsDepositModalOpen(true)}
                                 className="px-4 py-2 bg-black border border-white text-white rounded-lg font-medium text-sm hover:bg-gray-900 transition-colors"

@@ -20,7 +20,7 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
     // ✅ Use initWalletClientSide from useProof hook
     const { initWalletClientSide, isInitializing, initStep } = useProof();
     const { profile } = useUserProfile();
-
+    const keys = getAllKeys()
     const fetchTokens = async () => {
         const response = await getAllTokens()
 
@@ -92,7 +92,7 @@ const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
 
                 <div className="flex items-center space-x-4">
                     {/* Deposit Button - only show when wallet is initialized */}
-                    {profile?.is_initialized && (
+                    {profile?.is_initialized && keys?.pk_root && (
                         <button
                             onClick={() => setIsDepositModalOpen(true)}
                             className="px-4 py-2 bg-black border border-white text-white rounded-lg font-medium hover:bg-gray-900 transition-colors"

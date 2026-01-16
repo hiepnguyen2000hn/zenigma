@@ -18,7 +18,7 @@ import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wal
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { parseUnits, parseEther } from 'viem';
 import toast from 'react-hot-toast';
-import { useSwitchChain, useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useConfig } from 'wagmi';
+import { useWriteContract, useReadContract, useConfig } from 'wagmi';
 import { waitForTransactionReceipt } from 'wagmi/actions';
 import { WETH_ADDRESSES } from '@/lib/constants';
 import { WETH_ABI } from '@/lib/abis/weth';
@@ -43,16 +43,16 @@ const NETWORKS = [
 type TokenType = 'native' | string; // 'native' or ERC20 token symbol (e.g., 'USDC', 'USDT')
 
 const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
-    // Step 1: Chain selection
+    // Chain (fixed to Sepolia)
     const [selectedChainId, setSelectedChainId] = useState<number>(11155111); // Default Sepolia
 
-    // Step 2: Token type selection
+    // Step 1: Token type selection
     const [selectedTokenType, setSelectedTokenType] = useState<TokenType | null>(null);
 
     // Get available ERC20 tokens from config
     const availableERC20Tokens = getAvailableERC20Tokens();
 
-    // Step 3: Amount
+    // Step 2: Amount
     const [amount, setAmount] = useState('');
 
     // Common states
@@ -60,7 +60,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     const [errorMessage, setErrorMessage] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingStep, setProcessingStep] = useState('');
-    const [hasJustSwitchedChain, setHasJustSwitchedChain] = useState(false);
+
 
     // Fetch tokens from API with cache
     const { tokens, isLoading: isLoadingTokens } = useTokens();
@@ -68,10 +68,6 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     // Privy hooks
     const { user } = usePrivy();
     const { wallets } = useWallets();
-
-    // Wagmi hooks for chain switching
-    const { chain: currentChain } = useAccount();
-    const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
 
     // Wagmi config for transaction receipts
     const config = useConfig();
@@ -610,33 +606,6 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     };
 
     const handleStepChange = async (step: number) => {
-        // ✅ When moving from Step 1 → Step 2, check if we need to switch chain
-        if (currentStep === 1 && step === 2) {
-            // Check if chain needs switching AND hasn't been switched yet
-            if (selectedChainId !== currentChain?.id && !hasJustSwitchedChain) {
-                try {
-                    setProcessingStep('Switching chain...');
-                    setIsProcessing(true);
-
-                    await switchChain({ chainId: selectedChainId });
-
-                    toast.success(`Switched to ${NETWORKS.find(n => n.chainId === selectedChainId)?.label}`);
-                    setIsProcessing(false);
-                    setProcessingStep('');
-                    setHasJustSwitchedChain(true); // Mark that we just switched
-                    return; // Don't proceed to next step - user needs to click Next again
-                } catch (error) {
-                    console.error('Failed to switch chain:', error);
-                    toast.error('Failed to switch chain. Please try again.');
-                    setIsProcessing(false);
-                    setProcessingStep('');
-                    return; // Don't proceed to next step
-                }
-            }
-            // If already switched or chain is correct, proceed to next step
-            setHasJustSwitchedChain(false); // Reset flag when moving to step 2
-        }
-
         setCurrentStep(step);
         setErrorMessage('');
     };
@@ -644,11 +613,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
     // Validation logic for each step
     const getValidationForCurrentStep = (): { canProceed: boolean; errorMessage: string } => {
         switch (currentStep) {
-            case 1: // Select Chain
-                // Always can proceed (chain is always selected with default)
-                return { canProceed: true, errorMessage: '' };
-
-            case 2: // Select Token Type
+            case 1: // Select Token Type
                 if (!selectedTokenType) {
                     return {
                         canProceed: false,
@@ -657,7 +622,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 }
                 return { canProceed: true, errorMessage: '' };
 
-            case 3: // Enter Amount
+            case 2: // Enter Amount
                 if (!amount || parseFloat(amount) <= 0) {
                     return {
                         canProceed: false,
@@ -667,7 +632,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
                 // Check if amount exceeds balance
                 const enteredAmount = parseFloat(amount);
-                if (selectedTokenType !== 'native') {
+                if (selectedTokenType && selectedTokenType !== 'native') {
                     // ERC20 token balance check
                     const availableBalance = parseFloat(allBalances[selectedTokenType] || '0');
                     if (enteredAmount > availableBalance) {
@@ -688,7 +653,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
                 return { canProceed: true, errorMessage: '' };
 
-            case 4: // Review
+            case 3: // Review
                 return { canProceed: true, errorMessage: '' };
 
             default:
@@ -740,85 +705,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                         canProceed={validation.canProceed}
                         errorMessage={validation.errorMessage}
                     >
-                        {/* Step 1: Select Chain */}
-                        <Step>
-                            <div className="space-y-4">
-                                <h3 className="text-base font-semibold text-white/90 mt-1">Select Network</h3>
-
-                                {/* Current Chain Info */}
-                                {currentChain && (
-                                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                                        <div className="text-xs text-blue-300">Currently connected to:</div>
-                                        <div className="text-sm text-white font-medium mt-1">
-                                            {NETWORKS.find(n => n.chainId === currentChain.id)?.label || `Chain ID: ${currentChain.id}`}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Network Selection */}
-                                <div className="grid gap-2.5">
-                                    {NETWORKS.map((network) => {
-                                        const isCurrentChain = currentChain?.id === network.chainId;
-                                        const isSelected = selectedChainId === network.chainId;
-                                        const chainInfo = chainMetadata[network.chainId];
-
-                                        return (
-                                            <button
-                                                key={network.chainId}
-                                                onClick={() => {
-                                                    setSelectedChainId(network.chainId);
-                                                    setHasJustSwitchedChain(false); // Reset flag when changing chain selection
-                                                }}
-                                                className={`group w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-between ${
-                                                    isSelected
-                                                        ? 'border-teal-500 bg-teal-500/10 shadow-lg shadow-teal-500/20'
-                                                        : 'border-gray-700/70 bg-gray-800/30 hover:border-teal-500/50 hover:bg-gray-800/50'
-                                                }`}
-                                            >
-                                                <div className="flex items-center space-x-3">
-                                                    {chainInfo?.imageUrl ? (
-                                                        <div className="w-10 h-10 rounded-full overflow-hidden bg-white flex items-center justify-center p-1">
-                                                            <Image
-                                                                src={chainInfo.imageUrl}
-                                                                alt={network.label}
-                                                                width={40}
-                                                                height={40}
-                                                                className="w-full h-full object-contain"
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500/20 to-blue-500/20 flex items-center justify-center">
-                                                            <span className="text-lg">?</span>
-                                                        </div>
-                                                    )}
-                                                    <div className="text-left">
-                                                        <div className="text-white font-semibold text-sm flex items-center gap-2">
-                                                            {network.label}
-                                                            {isCurrentChain && <span className="text-xs text-green-400">(Connected)</span>}
-                                                        </div>
-                                                        <div className="text-gray-400 text-xs">Chain ID: {network.chainId}</div>
-                                                    </div>
-                                                </div>
-                                                {!isCurrentChain && isSelected && (
-                                                    <div className="text-xs text-yellow-400">Will switch chain</div>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Switch Chain Warning */}
-                                {selectedChainId !== currentChain?.id && (
-                                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                                        <p className="text-yellow-300 text-xs">
-                                            ⚠ You will be prompted to switch to <strong>{NETWORKS.find(n => n.chainId === selectedChainId)?.label}</strong> in the next step.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </Step>
-
-                        {/* Step 2: Select Token Type */}
+                        {/* Step 1: Select Token Type */}
                         <Step>
                             <div className="space-y-4">
                                 <h3 className="text-base font-semibold text-white/90 mt-1">Select Token Type</h3>
@@ -909,7 +796,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             </div>
                         </Step>
 
-                        {/* Step 3: Enter Amount */}
+                        {/* Step 2: Enter Amount */}
                         <Step>
                             {selectedTokenType ? (
                                 <div className="space-y-4">
@@ -1000,7 +887,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             )}
                         </Step>
 
-                        {/* Step 4: Review */}
+                        {/* Step 3: Review */}
                         <Step>
                             {selectedTokenType && amount ? (
                                 <div className="space-y-5">
