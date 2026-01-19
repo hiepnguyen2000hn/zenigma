@@ -16,6 +16,8 @@ import {getAllKeys, signMessageWithSkRoot} from '@/lib/ethers-signer';
 import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import toast from 'react-hot-toast';
+import { useChainId, useSwitchChain } from 'wagmi';
+import { ensureSepoliaChain } from '@/lib/chain-utils';
 
 interface SidebarProps {
     selectedCrypto: string;
@@ -25,6 +27,8 @@ interface SidebarProps {
 const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const { authenticated, user } = usePrivy();
     const { wallets } = useWallets();
+    const chainId = useChainId();
+    const { switchChainAsync } = useSwitchChain();
     const orderInput = useAtomValue(orderInputAtom);
     const pair = useAtomValue(tradingPairAtom);
     const tokens = useAtomValue(tokensAtom); // Get tokens from store
@@ -116,7 +120,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             console.log('🚀 Step 1: Creating order...');
 
             // Get wallet address
-            const walletAddress = getWalletAddressByConnectorType(wallets);
+            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
             if (!walletAddress) {
                 toast.error('Please connect wallet first!');
                 setIsProcessing(false);
@@ -126,6 +130,13 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             // Get Privy user ID
             if (!user?.id) {
                 toast.error('Please authenticate with Privy first!');
+                setIsProcessing(false);
+                return;
+            }
+
+            // Check and switch to Sepolia if needed
+            const canProceed = await ensureSepoliaChain(chainId, switchChainAsync, setProcessingStep);
+            if (!canProceed) {
                 setIsProcessing(false);
                 return;
             }

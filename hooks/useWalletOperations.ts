@@ -49,7 +49,7 @@ export interface WalletOperationsResult {
 }
 
 export function useWalletOperations(): WalletOperationsResult {
-  const { exportWallet } = usePrivy();
+  const { user, exportWallet } = usePrivy();
   const { wallets } = useWallets();
 
   const [isExporting, setIsExporting] = useState(false);
@@ -59,7 +59,7 @@ export function useWalletOperations(): WalletOperationsResult {
 
   // Get the active embedded wallet (using centralized helper from wallet-utils)
   const getActiveWallet = () => {
-    const wallet = getWalletByConnectorType(wallets, 'embedded');
+    const wallet = getWalletByConnectorType(wallets, 'embedded', user);
     if (!wallet) {
       throw new Error('No embedded wallet found. Please connect a wallet first.');
     }

@@ -37,7 +37,7 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     // Get Privy wallet address and logout
     const { user, logout } = usePrivy();
     const { wallets } = useWallets();
-    const privyWalletAddress = getWalletAddressByConnectorType(wallets, 'embedded') || user?.wallet?.address;
+    const privyWalletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
 
     // Get pk_root (Zenigma wallet address) - reactive via Jotai atom
     const zenigmaAddress = useZenigmaAddress();

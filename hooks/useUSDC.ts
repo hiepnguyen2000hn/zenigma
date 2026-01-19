@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useWallets } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { getWalletByConnectorType } from '@/lib/wallet-utils';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useConfig, useBalance } from 'wagmi';
 import { waitForTransactionReceipt } from 'wagmi/actions';
@@ -44,17 +44,18 @@ const ERC20_ABI = [
 ] as const;
 
 export function useUSDC(spenderAddress?: `0x${string}`) {
+  const { user } = usePrivy();
   const { wallets } = useWallets();
   const config = useConfig(); // ✅ Get wagmi config for waitForTransactionReceipt
   const [userAddress, setUserAddress] = useState<`0x${string}` | undefined>();
 
   // Get embedded wallet address
   useEffect(() => {
-    const embeddedWallet = getWalletByConnectorType(wallets);
+    const embeddedWallet = getWalletByConnectorType(wallets, 'embedded', user);
     if (embeddedWallet?.address) {
       setUserAddress(embeddedWallet.address as `0x${string}`);
     }
-  }, [wallets]);
+  }, [wallets, user]);
 
   // Check if wallet is connected
   const isConnected = !!userAddress;

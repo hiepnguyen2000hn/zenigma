@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useSignTypedData } from 'wagmi';
+import { useSignTypedData, useChainId, useSwitchChain } from 'wagmi';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { ensureSepoliaChain } from '@/lib/chain-utils';
 import { TOTAL_TOKEN, MAX_PENDING_ORDER, API_ENDPOINTS } from '@/lib/constants';
 import apiClient from '@/lib/api';
 import { useClientProof } from '@/hooks/useClientProof';
@@ -509,6 +510,8 @@ export function useProof() {
   const { signTypedDataAsync } = useSignTypedData();
   const { deriveKeysFromSignature } = useClientProof();
   const { generateWalletInit } = useGenerateWalletInit();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
 
   const verifyProof = async ({
     proof,
@@ -673,7 +676,7 @@ export function useProof() {
   const generateWalletPayload = async () => {
     console.log('🚀 [useProof] Starting wallet payload generation...');
 
-    const walletAddress = getWalletAddressByConnectorType(wallets);
+    const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
     if (!walletAddress) {
       throw new Error('Please connect wallet first!');
     }
@@ -809,6 +812,12 @@ export function useProof() {
         setIsInitializing(false);
         setInitStep('');
         return true;
+      }
+
+      // Check and switch to Sepolia if needed
+      const canProceed = await ensureSepoliaChain(chainId, switchChainAsync, setInitStep);
+      if (!canProceed) {
+        return
       }
 
       // Generate wallet payload (keys + proof)
