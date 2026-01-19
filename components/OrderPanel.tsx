@@ -40,7 +40,11 @@ interface OrderFilters {
     limit?: number;
 }
 
-const OrderPanel = () => {
+interface OrderPanelProps {
+    refetchTrigger?: number;
+}
+
+const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
     const { authenticated, user } = usePrivy();
     const { wallets } = useWallets();
     const chainId = useChainId();
@@ -268,9 +272,9 @@ const OrderPanel = () => {
         fetchOrders(true);
 
         // Setup interval for auto-refetch (without loading state)
-        const intervalId = setInterval(() => fetchOrders(false), 5000);
+        // const intervalId = setInterval(() => fetchOrders(false), 5000);
 
-        return () => clearInterval(intervalId);
+        // return () => clearInterval(intervalId);
     }, [authenticated, user?.id, profile?.is_initialized]);
 
     // Refetch immediately when filters change
@@ -284,6 +288,18 @@ const OrderPanel = () => {
             .then(response => setOrders(response.data || []))
             .catch(err => console.error('Filter refetch failed:', err));
     }, [filters]);
+
+    // Refetch when refetchTrigger changes (triggered by SSE order:status event)
+    useEffect(() => {
+        if (!refetchTrigger || !authenticated || !user?.id || !profile?.is_initialized) return;
+
+        const walletId = extractPrivyWalletId(user.id);
+        console.log('🔄 [OrderPanel] SSE trigger refetch, refetchTrigger:', refetchTrigger);
+
+        getOrderList(walletId, filters)
+            .then(response => setOrders(response.data || []))
+            .catch(err => console.error('SSE trigger refetch failed:', err));
+    }, [refetchTrigger]);
 
     const hasOrders = orders.length > 0;
     return (

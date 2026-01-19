@@ -842,7 +842,7 @@ export function useProof() {
           wallet_id: payload.wallet_id
         });
 
-        toast.success('Wallet initialized successfully!');
+        toast.success('Proof created and queued. Sync may take a few minutes.');
       } else {
         console.log('ℹ️ [initWalletClientSide] Wallet already initialized, skipping API call');
       }

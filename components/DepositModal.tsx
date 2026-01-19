@@ -352,7 +352,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success(`Deposit verified successfully!\nAmount: ${amount} ${selectedTokenType}`, {
+                        toast.success('Proof created and queued. Sync may take a few minutes.', {
                             duration: 5000,
                         });
                     } else {
@@ -581,7 +581,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success(`Deposit verified successfully!\nAmount: ${amount} ${NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol}`, {
+                        toast.success('Proof created and queued. Sync may take a few minutes.', {
                             duration: 5000,
                         });
                     } else {
