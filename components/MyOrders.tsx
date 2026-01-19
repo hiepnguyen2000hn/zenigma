@@ -12,6 +12,8 @@ import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { useWallets } from '@privy-io/react-auth';
 import toast from 'react-hot-toast';
+import { useChainId, useSwitchChain } from 'wagmi';
+import { ensureSepoliaChain } from '@/lib/chain-utils';
 import Header from './Header';
 import { useTokens } from '@/hooks/useTokens';
 import DateTimeRangePicker from './DateTimeRangePicker';
@@ -44,6 +46,8 @@ interface OrderFilters {
 const MyOrders = () => {
   const { authenticated, user } = usePrivy();
   const { wallets } = useWallets();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
   const { getSymbol } = useTokenMapping();
   const { tokens } = useTokens();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -222,7 +226,7 @@ const MyOrders = () => {
       setCancellingOrders(prev => new Set(prev).add(orderIndex));
       console.log('🚫 Starting cancel order process...', { orderIndex });
 
-      const walletAddress = getWalletAddressByConnectorType(wallets);
+      const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
       if (!walletAddress) {
         toast.error('Please connect wallet first!');
         setCancellingOrders(prev => {
@@ -235,6 +239,17 @@ const MyOrders = () => {
 
       if (!user?.id) {
         toast.error('Please authenticate with Privy first!');
+        setCancellingOrders(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(orderIndex);
+          return newSet;
+        });
+        return;
+      }
+
+      // Check and switch to Sepolia if needed
+      const canProceed = await ensureSepoliaChain(chainId, switchChainAsync);
+      if (!canProceed) {
         setCancellingOrders(prev => {
           const newSet = new Set(prev);
           newSet.delete(orderIndex);

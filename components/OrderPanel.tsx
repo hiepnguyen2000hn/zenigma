@@ -14,6 +14,8 @@ import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import toast from 'react-hot-toast';
 import { useTokens } from '@/hooks/useTokens';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useChainId, useSwitchChain } from 'wagmi';
+import { ensureSepoliaChain } from '@/lib/chain-utils';
 
 // Order status mapping (from API string to UI display)
 const ORDER_STATUS = {
@@ -41,6 +43,8 @@ interface OrderFilters {
 const OrderPanel = () => {
     const { authenticated, user } = usePrivy();
     const { wallets } = useWallets();
+    const chainId = useChainId();
+    const { switchChainAsync } = useSwitchChain();
     const { getSymbol } = useTokenMapping();
     const { tokens } = useTokens();
     const { profile } = useUserProfile();
@@ -113,7 +117,7 @@ const OrderPanel = () => {
             console.log('🚫 Starting cancel order process...', { orderIndex });
 
             // Get wallet address
-            const walletAddress = getWalletAddressByConnectorType(wallets);
+            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
             if (!walletAddress) {
                 toast.error('Please connect wallet first!');
                 setCancellingOrderIndex(null);
@@ -123,6 +127,13 @@ const OrderPanel = () => {
             // Get Privy user ID
             if (!user?.id) {
                 toast.error('Please authenticate with Privy first!');
+                setCancellingOrderIndex(null);
+                return;
+            }
+
+            // Check and switch to Sepolia if needed
+            const canProceed = await ensureSepoliaChain(chainId, switchChainAsync);
+            if (!canProceed) {
                 setCancellingOrderIndex(null);
                 return;
             }

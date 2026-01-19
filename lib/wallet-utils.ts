@@ -314,44 +314,66 @@ export interface PrivyWallet {
 export type WalletConnectorType = 'embedded' | 'injected' | 'wallet_connect' | 'coinbase_wallet' | 'external';
 
 /**
+ * User type from Privy usePrivy hook
+ */
+export interface PrivyUser {
+  wallet?: { address?: string };
+  [key: string]: any;
+}
+
+/**
  * Get wallet by connector type from wallets array
  *
  * Centralized function to get wallet by connectorType
  * Supports: embedded, injected, wallet_connect, coinbase_wallet, external (localStorage)
  *
- * @param wallets - Array of wallets from useWallets hook
+ * @param wallets - Array of wallets from useWallets hook (can be empty array)
  * @param connectorType - Type of connector to find (default: 'embedded')
+ * @param user - Optional user object from usePrivy hook (preferred source for embedded wallet)
  * @returns Wallet matching the connector type or undefined if not found
  *
  * @example
  * const { wallets } = useWallets();
- * // Get embedded wallet (Privy)
- * const embeddedWallet = getWalletByConnectorType(wallets, 'embedded');
+ * const { user } = usePrivy();
+ * // Get embedded wallet (Privy) - prefers user.wallet if available
+ * const embeddedWallet = getWalletByConnectorType(wallets, 'embedded', user);
  * // Get injected wallet (MetaMask, etc.)
  * const injectedWallet = getWalletByConnectorType(wallets, 'injected');
  */
 export function getWalletByConnectorType<T extends PrivyWallet>(
   wallets: T[],
-  connectorType: WalletConnectorType = 'embedded'
+  connectorType: WalletConnectorType = 'embedded',
+  user?: PrivyUser | null
 ): T | undefined {
+  // For embedded wallet, prefer user.wallet.address if available
+  if (user?.wallet?.address) {
+    return user.wallet
+  }
   return wallets.find(wallet => wallet.connectorType === connectorType);
 }
 
 /**
  * Get wallet address by connector type from wallets array
  *
- * @param wallets - Array of wallets from useWallets hook
+ * @param wallets - Array of wallets from useWallets hook (can be empty array)
  * @param connectorType - Type of connector to find (default: 'embedded')
+ * @param user - Optional user object from usePrivy hook (preferred source for embedded wallet)
  * @returns Wallet address or undefined if not found
  *
  * @example
  * const { wallets } = useWallets();
- * const address = getWalletAddressByConnectorType(wallets, 'embedded');
+ * const { user } = usePrivy();
+ * const address = getWalletAddressByConnectorType(wallets, 'embedded', user);
  */
 export function getWalletAddressByConnectorType<T extends PrivyWallet>(
   wallets: T[],
-  connectorType: WalletConnectorType = 'embedded'
+  connectorType: WalletConnectorType = 'embedded',
+  user?: PrivyUser | null
 ): string | undefined {
+  // For embedded wallet, prefer user.wallet.address if available
+  if (connectorType === 'embedded' && user?.wallet?.address) {
+    return user.wallet.address;
+  }
   return getWalletByConnectorType(wallets, connectorType)?.address;
 }
 

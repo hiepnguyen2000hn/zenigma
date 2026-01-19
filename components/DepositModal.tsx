@@ -18,7 +18,8 @@ import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wal
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { parseUnits, parseEther } from 'viem';
 import toast from 'react-hot-toast';
-import { useWriteContract, useReadContract, useConfig } from 'wagmi';
+import { useWriteContract, useReadContract, useConfig, useChainId, useSwitchChain } from 'wagmi';
+import { ensureSepoliaChain } from '@/lib/chain-utils';
 import { waitForTransactionReceipt } from 'wagmi/actions';
 import { WETH_ADDRESSES } from '@/lib/constants';
 import { WETH_ABI } from '@/lib/abis/weth';
@@ -71,6 +72,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
     // Wagmi config for transaction receipts
     const config = useConfig();
+    const chainId = useChainId();
+    const { switchChainAsync } = useSwitchChain();
 
     // WETH contract hooks
     const { writeContractAsync: wethWriteAsync } = useWriteContract();
@@ -86,11 +89,11 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
         address: wethAddress,
         abi: WETH_ABI,
         functionName: 'allowance',
-        args: getWalletAddressByConnectorType(wallets, 'embedded') && PERMIT2_ADDRESS
-            ? [getWalletAddressByConnectorType(wallets, 'embedded') as `0x${string}`, PERMIT2_ADDRESS]
+        args: getWalletAddressByConnectorType(wallets, 'embedded', user) && PERMIT2_ADDRESS
+            ? [getWalletAddressByConnectorType(wallets, 'embedded', user) as `0x${string}`, PERMIT2_ADDRESS]
             : undefined,
         query: {
-            enabled: !!(getWalletAddressByConnectorType(wallets, 'embedded') && PERMIT2_ADDRESS),
+            enabled: !!(getWalletAddressByConnectorType(wallets, 'embedded', user) && PERMIT2_ADDRESS),
         }
     });
 
@@ -165,7 +168,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             }
 
             // Get wallet address
-            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded');
+            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
             if (!walletAddress) {
                 toast.error('Please connect wallet first!');
                 setIsProcessing(false);
@@ -175,6 +178,13 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             // Get Privy user ID
             if (!user?.id) {
                 toast.error('Please authenticate with Privy first!');
+                setIsProcessing(false);
+                return;
+            }
+
+            // Check and switch to Sepolia if needed
+            const canProceed = await ensureSepoliaChain(chainId, switchChainAsync, setProcessingStep);
+            if (!canProceed) {
                 setIsProcessing(false);
                 return;
             }

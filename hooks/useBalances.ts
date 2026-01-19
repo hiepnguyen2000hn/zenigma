@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSetAtom } from 'jotai';
-import { useWallets } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { getWalletByConnectorType } from '@/lib/wallet-utils';
 import { useReadContract } from 'wagmi';
 import { formatUnits } from 'viem';
@@ -69,11 +69,12 @@ const MOCK_PRICES: Record<string, number> = {
  * ```
  */
 export function useBalances() {
+  const { user } = usePrivy();
   const { wallets } = useWallets();
   const setBalances = useSetAtom(balancesAtom);
 
   // Get embedded wallet address
-  const embeddedWallet = getWalletByConnectorType(wallets);
+  const embeddedWallet = getWalletByConnectorType(wallets, 'embedded', user);
   const userAddress = embeddedWallet?.address as `0x${string}` | undefined;
 
   // Fetch USDC balance (token đầu tiên)

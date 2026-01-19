@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useWallets } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { getWalletByConnectorType } from '@/lib/wallet-utils';
 import { useReadContracts, useBalance } from 'wagmi';
 import { formatUnits, formatEther } from 'viem';
@@ -31,13 +31,14 @@ interface TokenConfig {
  * @returns Object with token balances: { 'USDC': '100.50', 'USDT': '50.00', native: '1.5' }
  */
 export function useAllTokenBalances(apiTokens?: Token[]) {
+  const { user } = usePrivy();
   const { wallets } = useWallets();
 
   // Get embedded wallet address
   const userAddress = useMemo(() => {
-    const embeddedWallet = getWalletByConnectorType(wallets);
-    return embeddedWallet?.address as `0x${string}` | undefined;
-  }, [wallets]);
+    const embeddedWallet = getWalletByConnectorType(wallets, 'embedded', user);
+    return embeddedWallet?.address ? embeddedWallet.address : embeddedWallet
+  }, [wallets, user]);
 
   // Use API tokens if provided, otherwise use hardcoded ERC20 tokens
   const availableTokens: TokenConfig[] = useMemo(() => {

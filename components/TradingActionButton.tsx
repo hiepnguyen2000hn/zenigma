@@ -17,6 +17,7 @@ const TradingActionButton = ({ className = "", onClick }: TradingActionButtonPro
     const orderInput = useAtomValue(orderInputAtom);
     const balances = useAtomValue(balancesAtom);
     const { fundWallet } = useFundWallet();
+    const { user } = usePrivy();
     const { wallets } = useWallets();
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -25,7 +26,7 @@ const TradingActionButton = ({ className = "", onClick }: TradingActionButtonPro
         setIsProcessing(true);
         try {
             // Get embedded wallet address
-            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded');
+            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
             console.log('test11111111111111',walletAddress)
             if (!walletAddress) {
                 console.error("No embedded wallet address found");

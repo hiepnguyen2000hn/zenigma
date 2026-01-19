@@ -17,6 +17,8 @@ import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
 import { parseUnits } from 'viem';
 import toast from 'react-hot-toast';
+import { useChainId, useSwitchChain } from 'wagmi';
+import { ensureSepoliaChain } from '@/lib/chain-utils';
 
 interface WithdrawModalProps {
     isOpen: boolean;
@@ -48,6 +50,10 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
     // Privy hooks
     const { user } = usePrivy();
     const { wallets } = useWallets();
+
+    // Wagmi hooks for chain management
+    const chainId = useChainId();
+    const { switchChainAsync } = useSwitchChain();
 
     // Proof hooks
     const { verifyProof, calculateNewState } = useProof();
@@ -104,7 +110,7 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
             }
 
             // Get wallet address
-            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded');
+            const walletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
             if (!walletAddress) {
                 toast.error('Please connect wallet first!');
                 setIsProcessing(false);
@@ -114,6 +120,13 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
             // Get Privy user ID
             if (!user?.id) {
                 toast.error('Please authenticate with Privy first!');
+                setIsProcessing(false);
+                return;
+            }
+
+            // Check and switch to Sepolia if needed
+            const canProceed = await ensureSepoliaChain(chainId, switchChainAsync, setProcessingStep);
+            if (!canProceed) {
                 setIsProcessing(false);
                 return;
             }
