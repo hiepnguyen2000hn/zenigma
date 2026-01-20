@@ -265,9 +265,9 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                             <div className="text-white font-medium text-sm">
                                                 {zenigmaAddress ? 'Zenigma Wallet' : 'Sign in to Zenigma'}
                                             </div>
-                                            {zenigmaAddress && (
+                                            {zenigmaAddress && user?.id && (
                                                 <div className="text-gray-500 text-xs">
-                                                    {formatAddress(zenigmaAddress)}
+                                                    {formatAddress(extractPrivyWalletId(user.id))}
                                                 </div>
                                             )}
                                         </div>
@@ -286,35 +286,17 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                     sideOffset={8}
                                     className="w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-[9999] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
                                 >
-                                    {zenigmaAddress && (
+                                    {zenigmaAddress && user?.id && (
                                         <>
-                                            {/* Full Address */}
+                                            {/* Wallet ID */}
                                             <div className="p-3 border-b border-gray-800">
                                                 <div className="text-gray-400 text-xs font-mono break-all">
-                                                    {zenigmaAddress}
+                                                    {extractPrivyWalletId(user.id)}
                                                 </div>
                                             </div>
 
                                             {/* Actions */}
                                             <div className="py-1">
-                                                <Popover.Close asChild>
-                                                    <button
-                                                        onClick={() => handleCopyAddress(zenigmaAddress)}
-                                                        className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-gray-800 transition-colors outline-none"
-                                                    >
-                                                        <Copy size={16} className="text-gray-400" />
-                                                        <span className="text-white text-sm">Copy Address</span>
-                                                    </button>
-                                                </Popover.Close>
-                                                <Popover.Close asChild>
-                                                    <button
-                                                        onClick={() => handleViewExplorer(zenigmaAddress, 'zenigma')}
-                                                        className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-gray-800 transition-colors outline-none"
-                                                    >
-                                                        <ExternalLink size={16} className="text-gray-400" />
-                                                        <span className="text-white text-sm">View on Explorer</span>
-                                                    </button>
-                                                </Popover.Close>
                                                 <Popover.Close asChild>
                                                     <button
                                                         onClick={handleZenigmaDisconnect}
