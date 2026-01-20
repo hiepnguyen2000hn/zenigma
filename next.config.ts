@@ -6,6 +6,11 @@ const nextConfig: NextConfig = {
   // Note: StrictMode helps catch bugs - only disable if necessary
   reactStrictMode: false,
 
+  // Remove console.log in production builds
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+
   // Use empty turbopack config to silence the warning and continue using webpack
   turbopack: {},
   typescript: {
