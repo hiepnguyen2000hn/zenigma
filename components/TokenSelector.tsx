@@ -180,10 +180,12 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
     };
   }, [isOpen]);
 
+  // Filter out USDC (index 0 / quote token) - only show tradeable base tokens
   const filteredTokens = tokens.filter(
     (token) =>
-      token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      token.name.toLowerCase().includes(searchQuery.toLowerCase())
+      token.symbol !== 'USDC' && // Exclude USDC (quote token)
+      (token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      token.name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const handleSelectToken = (token: Token) => {

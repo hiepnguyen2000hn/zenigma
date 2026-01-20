@@ -352,7 +352,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success('Proof created and queued. Sync may take a few minutes.', {
+                        toast.success('Please allow a few minutes for the system to sync', {
                             duration: 5000,
                         });
                     } else {
@@ -581,7 +581,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success('Proof created and queued. Sync may take a few minutes.', {
+                        toast.success('Please allow a few minutes for the system to sync', {
                             duration: 5000,
                         });
                     } else {

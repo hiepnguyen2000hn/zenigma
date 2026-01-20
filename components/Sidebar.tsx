@@ -298,7 +298,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             });
             console.log(submitResult.success, 'submitResult1')
             if (submitResult.success) {
-                toast.success('Proof created and queued. Sync may take a few minutes.');
+                toast.success('Please allow a few minutes for the system to sync');
             } else {
                 console.error('❌ Step 7: Order submission failed:', submitResult.error);
                 toast.error(`Order submission failed: ${submitResult.error}`);
