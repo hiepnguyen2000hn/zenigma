@@ -95,7 +95,7 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
             if (success && user?.id) {
                 const walletId = extractPrivyWalletId(user.id);
                 await fetchProfile(walletId);
-                toast.success('Proof created and queued. Sync may take a few minutes.');
+                toast.success('Please allow a few minutes for the system to sync');
             }
         } catch (error) {
             console.error('❌ [PortfolioSidebar] Zenigma init error:', error);
