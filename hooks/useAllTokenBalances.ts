@@ -55,7 +55,8 @@ export function useAllTokenBalances(apiTokens?: Token[]) {
   // Get native token balance (ETH/SepoliaETH)
   const {
     data: nativeBalanceData,
-    isLoading: isLoadingNative
+    isLoading: isLoadingNative,
+    refetch: refetchNative,
   } = useBalance({
     address: userAddress,
     query: {
@@ -79,6 +80,7 @@ export function useAllTokenBalances(apiTokens?: Token[]) {
   const {
     data: balancesData,
     isLoading: isLoadingERC20,
+    refetch: refetchERC20,
   } = useReadContracts({
     contracts,
     query: {
@@ -118,9 +120,15 @@ export function useAllTokenBalances(apiTokens?: Token[]) {
     return result;
   }, [balancesData, nativeBalanceData, availableTokens]);
 
+  // Refetch all balances (native + ERC20)
+  const refetchBalances = async () => {
+    await Promise.all([refetchNative(), refetchERC20()]);
+  };
+
   return {
     balances,
     isLoading: isLoadingNative || isLoadingERC20,
     isConnected: !!userAddress,
+    refetchBalances,
   };
 }

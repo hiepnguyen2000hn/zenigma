@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChevronDown, ExternalLink, Circle } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
@@ -8,6 +8,7 @@ import { useTokenMapping } from '@/hooks/useTokenMapping';
 import { getTransferHistory, type Transfer } from '@/lib/services';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { connectSSE, disconnectSSE } from '@/lib/sse.client';
 import Header from './Header';
 import WithdrawModal from './WithdrawModal';
 import DepositModal from './DepositModal';
@@ -15,6 +16,7 @@ import DateTimeRangePicker from './DateTimeRangePicker';
 import { useTokens } from '@/hooks/useTokens';
 import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import toast from 'react-hot-toast';
 
 // Transfer direction mapping (from API string to UI display)
 const TRANSFER_DIRECTION = {
@@ -81,7 +83,7 @@ const MyAssets = () => {
   }, [tokens]);
 
   // Pass only valid tokens to read wallet balances
-  const { balances: walletBalances, isLoading: isLoadingWalletBalances } = useAllTokenBalances(validTokensForBalance);
+  const { balances: walletBalances, isLoading: isLoadingWalletBalances, refetchBalances } = useAllTokenBalances(validTokensForBalance);
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -176,7 +178,7 @@ const MyAssets = () => {
   }, [startDate, endDate]);
 
   // ✅ Fetch transfer history helper function
-  const fetchTransferHistory = async () => {
+  const fetchTransferHistory = useCallback(async () => {
     if (!user?.id) return;
 
     try {
@@ -191,7 +193,78 @@ const MyAssets = () => {
     } catch (err) {
       console.error('Failed to refetch transfer history:', err);
     }
+  }, [user?.id]);
+
+  // ============================================
+  // SSE Message Handler (stored in ref to avoid reconnection)
+  // ============================================
+  const handleSSEMessage = (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      const eventType = data.type || data.event;
+
+      console.log('[SSE][MyAssets] Received message:', eventType, data);
+
+      if (eventType === 'transfer:status') {
+        console.log('[SSE][MyAssets] transfer:status:', data);
+
+        const transferData = data.data || data;
+        if (transferData.status === 'completed') {
+          // Re-fetch profile to update balances
+          if (user?.id) {
+            const walletId = extractPrivyWalletId(user.id);
+            fetchProfile(walletId);
+          }
+
+          // Re-fetch transfer history for both DEPOSIT and WITHDRAW
+          fetchTransferHistory();
+
+          // Show toast based on transfer direction
+          const tokenSymbol = getSymbol(transferData.token_index) || 'TOKEN';
+          const amount = transferData.amount || '0';
+          if (transferData.direction === 'DEPOSIT') {
+            toast.success(`Deposit successful: ${amount} ${tokenSymbol}`);
+          } else if (transferData.direction === 'WITHDRAW') {
+            // Refetch wallet balances when WITHDRAW (token transferred to wallet)
+            refetchBalances();
+            toast.success(`Withdraw successful: ${amount} ${tokenSymbol}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[SSE][MyAssets] Error parsing message:', error, event.data);
+    }
   };
+
+  // Store handler in ref to always have latest version
+  const sseHandlerRef = useRef(handleSSEMessage);
+  sseHandlerRef.current = handleSSEMessage;
+
+  // ============================================
+  // SSE Connection Effect - Only depends on user?.id
+  // ============================================
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const walletId = extractPrivyWalletId(user.id);
+    console.log('[SSE][MyAssets] Connecting with walletId:', walletId);
+
+    const eventSource = connectSSE(walletId);
+
+    if (eventSource) {
+      // Use ref wrapper to always call latest handler
+      eventSource.onmessage = (event) => sseHandlerRef.current(event);
+    }
+
+    // Cleanup on unmount or walletId change
+    return () => {
+      if (eventSource) {
+        eventSource.onmessage = null;
+      }
+      disconnectSSE();
+      console.log('[SSE][MyAssets] Disconnected on cleanup');
+    };
+  }, [user?.id]);
 
   // Effect: Fetch profile (nếu cần) và transfers
   // Deps: user?.id (wallet), isTokensLoaded (tokens ready), filters (user filter change)
@@ -250,7 +323,18 @@ const MyAssets = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isTokensLoaded, filters]);
 
-  // Effect 3: Cleanup khi logout
+  // Effect: Sync assets when profile changes (for SSE updates)
+  useEffect(() => {
+    if (profile && tokens.length > 0) {
+      const assetsList: Asset[] = tokens.map(token => ({
+        tokenIndex: token.index,
+        balance: profile.available_balances?.[token.index] || '0',
+      }));
+      setAssets(assetsList);
+    }
+  }, [profile, tokens]);
+
+  // Effect: Cleanup khi logout
   useEffect(() => {
     if (!authenticated) {
       setAssets([]);
@@ -318,7 +402,7 @@ const MyAssets = () => {
                         Sign in to view your assets.
                       </td>
                     </tr>
-                  ) : loading || isLoadingTokens || profileLoading || isLoadingWalletBalances ? (
+                  ) : (loading || isLoadingTokens || profileLoading || isLoadingWalletBalances) && assets.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
                         Loading assets...
@@ -487,15 +571,6 @@ const MyAssets = () => {
                 <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[120px]">
                   <button
                     onClick={() => {
-                      setFilter({ direction: ['0'] });
-                      setShowFilters({ ...showFilters, direction: false });
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-green-500 hover:bg-gray-800 transition-colors"
-                  >
-                    Deposit
-                  </button>
-                  <button
-                    onClick={() => {
                       setFilter({ direction: ['1'] });
                       setShowFilters({ ...showFilters, direction: false });
                     }}
@@ -599,7 +674,7 @@ const MyAssets = () => {
                       Sign in to view your transfer history.
                     </td>
                   </tr>
-                ) : loading || profileLoading ? (
+                ) : (loading || profileLoading) && transfers.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-gray-400">
                       Loading transfers...
