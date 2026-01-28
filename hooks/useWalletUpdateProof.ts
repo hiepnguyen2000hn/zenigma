@@ -6,14 +6,10 @@ import { TOTAL_TOKEN, MAX_PENDING_ORDER } from '@/lib/constants';
 import type { WalletState, Operations } from './useProof';
 import { getAllKeys } from '@/lib/ethers-signer';
 
-/**
- * Client-side hook for generating wallet update proofs
- * Migrated from app/api/proof/generate-wallet-update/route.ts
- */
-
 const GLOBAL_DEPTH = 16;
+const PERCISION = 10000;
+const BALANCE_PERCISION = PERCISION * PERCISION;
 
-// Cached instances
 let barretenberg: any = null;
 let cachedCircuit: any = null;
 let cachedBackend: any = null;
@@ -64,20 +60,6 @@ async function computeOrderHash(order: any, bb?: any, Fr?: any): Promise<string>
   ], bb, Fr);
 }
 
-/**
- * Compute wallet commitment (matches backend test file structure)
- *
- * Commitment = Poseidon2([
- *   availableHash,
- *   reservedHash,
- *   ordersHash,
- *   keysHash,
- *   fees,
- *   blinder
- * ])
- *
- * Where keysHash = Poseidon2([pkRoot, pkMatch, nonce])
- */
 async function computeWalletCommitment(
   availableBalances: (bigint | string)[],
   reservedBalances: (bigint | string)[],
@@ -115,9 +97,6 @@ async function computeWalletCommitment(
   return commitment;
 }
 
-/**
- * Calculate merkle root from leaf commitment and sibling paths
- */
 async function computeMerkleRoot(
   commitment: string | bigint,
   index: number,
@@ -148,11 +127,7 @@ export function useWalletUpdateProof() {
   const [progress, setProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * Generate wallet update proof (CLIENT-SIDE)
-   */
   async function generateWalletUpdateProofClient(params: {
-    userSecret: string;
     oldNonce: string;
     oldMerkleRoot: string;
     oldMerkleIndex: number;
@@ -162,7 +137,6 @@ export function useWalletUpdateProof() {
     operations?: Operations;
   }) {
     const {
-      userSecret,
       oldNonce,
       oldMerkleRoot,
       oldMerkleIndex,
@@ -172,10 +146,10 @@ export function useWalletUpdateProof() {
       operations
     } = params;
 
-    if (!userSecret || !oldState || !newState) {
+    if (!oldState || !newState) {
       return {
         success: false,
-        error: 'userSecret, oldState, and newState are required'
+        error: 'oldState, and newState are required'
       };
     }
 
@@ -187,9 +161,6 @@ export function useWalletUpdateProof() {
     console.log('🚀 CLIENT-SIDE: Generating wallet update proof...');
 
     try {
-      // ============================================
-      // STEP 1: Load circuit
-      // ============================================
       setProgress('Loading circuit...');
 
       if (!cachedCircuit) {
@@ -197,10 +168,6 @@ export function useWalletUpdateProof() {
         cachedCircuit = circuit;
         console.log('✅ Circuit loaded and cached');
       }
-
-      // ============================================
-      // STEP 2: Initialize backend and noir
-      // ============================================
       setProgress('Initializing backend...');
 
       if (!cachedBackend || !cachedNoir) {
@@ -216,10 +183,6 @@ export function useWalletUpdateProof() {
 
       const backend = cachedBackend;
       const noir = cachedNoir;
-
-      // ============================================
-      // STEP 3: Get keys from localStorage
-      // ============================================
       setProgress('Loading keys from localStorage...');
 
       const keys = getAllKeys();
@@ -232,21 +195,15 @@ export function useWalletUpdateProof() {
       console.log('  - pk_match:', keys.pk_match.substring(0, 20) + '...');
       console.log('  - sk_match:', keys.sk_match.substring(0, 20) + '...');
 
-      // ============================================
-      // STEP 4: Prepare values
-      // ============================================
       setProgress('Calculating commitments...');
 
-      // Pre-load bb and Fr
       const bb = await getBarretenberg();
       const Fr = await getFrClass();
 
-      // Convert pk_root address to BigInt
       const pkRootBigInt = BigInt(keys.pk_root);
       const pkMatchBigInt = BigInt(keys.pk_match);
       const skMatchBigInt = BigInt(keys.sk_match);
 
-      // Calculate order hashes
       const [oldOrdersHashes, newOrdersHashes] = await Promise.all([
         Promise.all(oldState.orders_list.map(order => computeOrderHash(order, bb, Fr))),
         Promise.all(newState.orders_list.map(order => computeOrderHash(order, bb, Fr)))
@@ -255,7 +212,6 @@ export function useWalletUpdateProof() {
       console.log('✅ Old orders hashes:', oldOrdersHashes);
       console.log('✅ New orders hashes:', newOrdersHashes);
 
-      // ✅ Calculate old commitment using computeWalletCommitment
       const oldCommitment = await computeWalletCommitment(
         oldState.available_balances,
         oldState.reserved_balances,
@@ -264,7 +220,7 @@ export function useWalletUpdateProof() {
         pkRootBigInt,
         pkMatchBigInt,
         oldNonce,
-        oldState.blinder || '0',  // ✅ Use blinder from oldState
+        oldState.blinder || '0', 
         bb,
         Fr
       );
@@ -307,25 +263,19 @@ export function useWalletUpdateProof() {
       console.log('✅ Old Blinder:', oldState.blinder?.substring(0, 20) + '...');
       console.log('✅ New Blinder:', newState.blinder?.substring(0, 20) + '...');
 
-      // ============================================
-      // STEP 4: Extract operations
-      // ============================================
       const hasTransfer = operations?.transfer !== undefined;
       const hasOrder = operations?.order !== undefined;
 
-      // Determine operation_type: 0=transfer only, 1=order only, 2=both
       let operation_type = '0';
       if (hasTransfer && hasOrder) operation_type = '2';
       else if (hasOrder) operation_type = '1';
       else if (hasTransfer) operation_type = '0';
 
-      // Transfer parameters
       const transfer_direction = hasTransfer ? operations.transfer!.direction.toString() : '0';
       const transfer_mint = hasTransfer ? operations.transfer!.token_index.toString() : '0';
       const transfer_amount = hasTransfer ? operations.transfer!.amount.toString() : '0';
       const transfer_index = transfer_mint;
 
-      // Order parameters
       const order_index = hasOrder ? operations.order!.order_index.toString() : '0';
       const order_operation_type = hasOrder ? operations.order!.operation_type.toString() : '0';
       const order_direction = hasOrder && operations.order!.order_data
@@ -352,9 +302,6 @@ export function useWalletUpdateProof() {
         order: hasOrder ? { order_index, order_operation_type, order_direction, order_price, order_quantity, order_token_in, order_token_out } : null
       });
 
-      // ============================================
-      // STEP 5: Prepare circuit inputs (match test file structure)
-      // ============================================
       const inputs = {
         // Public inputs
         old_wallet_commitment: oldCommitment,
@@ -365,10 +312,8 @@ export function useWalletUpdateProof() {
         transfer_amount,
         operation_type,
 
-        // Private inputs - Keys and wallet data
         sk_match: skMatchBigInt.toString(),  // ✅ Use sk_match from localStorage
 
-        // Old wallet structure
         old_wallet: {
           available_balances: oldState.available_balances.map((b: any) => b.toString()),
           reserved_balances: oldState.reserved_balances.map((b: any) => b.toString()),
@@ -400,9 +345,6 @@ export function useWalletUpdateProof() {
 
       console.log('✅ Circuit inputs prepared',inputs);
 
-      // ============================================
-      // STEP 6: Generate witness
-      // ============================================
       setProgress('Generating witness...', inputs);
 
       const witnessStartTime = Date.now();
@@ -410,9 +352,6 @@ export function useWalletUpdateProof() {
       const witnessTime = Date.now() - witnessStartTime;
       console.log(`✅ Witness generation took ${witnessTime}ms`);
 
-      // ============================================
-      // STEP 7: Generate proof
-      // ============================================
       setProgress('Generating proof (this may take 3-8 seconds)...');
 
       const proofGenStartTime = Date.now();
@@ -426,12 +365,10 @@ export function useWalletUpdateProof() {
       setIsGenerating(false);
       setProgress('');
 
-      // Convert proof to hex
       const proofHex = '0x' + Array.from(proof)
         .map((b: number) => b.toString(16).padStart(2, '0'))
         .join('');
 
-      // Convert publicInputs to object (match test file structure)
       const namedPublicInputs = {
         old_wallet_commitment: publicInputs[0],
         new_wallet_commitment: publicInputs[1],
@@ -481,12 +418,10 @@ export function useWalletUpdateProof() {
   }
 
   return {
-    // States
     isGenerating,
     progress,
     error,
 
-    // Functions
     generateWalletUpdateProofClient
   };
 }

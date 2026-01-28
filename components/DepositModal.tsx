@@ -5,10 +5,10 @@ import { X } from 'lucide-react';
 import Stepper, { Step } from './Stepper';
 import { useERC20Token } from '@/hooks/useERC20Token';
 import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
-import { DARKPOOL_CORE_ADDRESS, PERMIT2_ADDRESS, getAvailableERC20Tokens } from '@/lib/constants';
+import { DARKPOOL_CORE_ADDRESS, PERMIT2_ADDRESS, getAvailableERC20Tokens, BALANCE_PERCISION } from '@/lib/constants';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokens } from '@/hooks/useTokens';
-import { type Token, getUserProfile } from '@/lib/services';
+import { type Token, getUserProfile, scaleToInt } from '@/lib/services';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
@@ -279,13 +279,13 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 });
 
                 // Step 4: Create TransferAction
-                // ⚠️ IMPORTANT: amount must be in smallest unit (base units for ERC20)
-                const amountInBaseUnits = parseUnits(amount, tokenDecimals).toString();
+                const depositAmountScaled = scaleToInt(amount, BALANCE_PERCISION);
+
                 const action: TransferAction = {
                     type: 'transfer',
                     direction: 0,
                     token_index: tokenFromAPI.index, // Use index from API
-                    amount: amount, // ✅ String of integer (base units)
+                    amount: depositAmountScaled, // ✅ String of integer (base units)
                     permit2Nonce: permit2Data.permit2Nonce.toString(),
                     permit2Deadline: permit2Data.permit2Deadline.toString(),
                     permit2Signature: permit2Data.permit2Signature
@@ -308,10 +308,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 // Step 6: Generate proof
                 setProcessingStep('Generating proof (this may take a moment)...');
                 console.log('🔐 Step 6: Generating wallet update proof...');
-                const userSecret = '12312';
 
                 const proofData = await generateWalletUpdateProofClient({
-                    userSecret,
                     oldNonce: profile.nonce?.toString() || '0',
                     oldMerkleRoot: profile.merkle_root,
                     oldMerkleIndex: profile.merkle_index,
@@ -333,6 +331,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 // Step 8: Verify proof
                 setProcessingStep('Verifying proof...');
                 console.log('🔍 Step 8: Verifying proof...');
+                if (operations.transfer) {
+                    operations.transfer.amount = amount
+                }
                 const verifyResult = await verifyProof({
                     proof: proofData.proof,
                     publicInputs: proofData.publicInputs,
@@ -509,12 +510,12 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
                 // Step 5: Create TransferAction
                 // ⚠️ IMPORTANT: amount must be in Wei (18 decimals for ETH/WETH)
-                const amountInWeiString = amountInWei.toString(); // Already parsed as BigInt earlier
+                const depositAmountScaled = scaleToInt(amount, BALANCE_PERCISION);
                 const actionNative: TransferAction = {
                     type: 'transfer',
                     direction: 0,
                     token_index: wethToken.index,
-                    amount: amountInWeiString, // ✅ String of Wei (e.g. "100000000000000" for 0.0001 ETH)
+                    amount: depositAmountScaled, 
                     permit2Nonce: permit2Data.permit2Nonce.toString(),
                     permit2Deadline: permit2Data.permit2Deadline.toString(),
                     permit2Signature: permit2Data.permit2Signature
@@ -537,10 +538,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 // Step 7: Generate proof
                 setProcessingStep('Generating proof (this may take a moment)...');
                 console.log('🔐 Step 7: Generating wallet update proof...');
-                const userSecret = '12312';
 
                 const proofDataNative = await generateWalletUpdateProofClient({
-                    userSecret,
                     oldNonce: profile.nonce?.toString() || '0',
                     oldMerkleRoot: profile.merkle_root,
                     oldMerkleIndex: profile.merkle_index,

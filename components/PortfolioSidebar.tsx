@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { usePrivy, useWallets, useLogin } from '@privy-io/react-auth';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useUserBalance } from '@/hooks/useUserBalance';
 import { useTokens } from '@/hooks/useTokens';
 import { useZenigmaAddress } from '@/hooks/useWalletKeys';
 import { clearWalletKeysExternal } from '@/store/walletKeys';
@@ -42,11 +43,20 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     // Get pk_root (Zenigma wallet address) - reactive via Jotai atom
     const zenigmaAddress = useZenigmaAddress();
 
-    // Get user profile data (contains available_balances array)
+    // Get user profile data (for is_initialized check)
     const { profile, loading: profileLoading, fetchProfile, clearProfile } = useUserProfile();
+    // Get user balance from API
+    const { balance: userBalance, loading: balanceLoading, fetchBalance } = useUserBalance();
 
     // Get initWalletClientSide from useProof hook
     const { initWalletClientSide } = useProof();
+
+    // Fetch balance if not already loaded
+    useEffect(() => {
+        if (!user?.id || userBalance) return;
+        const walletId = extractPrivyWalletId(user.id);
+        fetchBalance(walletId);
+    }, [user?.id, userBalance, fetchBalance]);
 
     // Privy login hook
     const { login } = useLogin({
@@ -178,13 +188,15 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     // Get ERC20 tokens config for icons
     const erc20TokensConfig = getAvailableERC20Tokens();
 
-    // Combine token data with balances
+    // Combine token data with balances from useUserBalance
     const tokenBalances = useMemo(() => {
-        if (!profile || !apiTokens || apiTokens.length === 0) return [];
+        if (!apiTokens || apiTokens.length === 0) return [];
 
         return apiTokens.map((token) => {
-            // ✅ FIXED: Use token.index (tokenIndex from API) instead of array index
-            const balance = profile.available_balances?.[token.index] || '0';
+            const tokenBalance = userBalance?.balances?.find(
+                b => b.token_index === token.index
+            );
+            const balance = tokenBalance?.available || '0';
 
             // Get icon from ERC20_TOKENS config
             const tokenConfig = erc20TokensConfig.find(t => t.symbol === token.symbol);
@@ -195,7 +207,7 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                 icon: tokenConfig?.icon,
             };
         });
-    }, [profile, apiTokens, erc20TokensConfig]);
+    }, [userBalance, apiTokens, erc20TokensConfig]);
 
     // Calculate total portfolio value (assume 1:1 USD for stablecoins)
     const totalPortfolioValue = useMemo(() => {
@@ -209,7 +221,7 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
         }, 0);
     }, [tokenBalances]);
 
-    const isLoading = profileLoading || tokensLoading;
+    const isLoading = profileLoading || balanceLoading || tokensLoading;
 
     return (
         <>

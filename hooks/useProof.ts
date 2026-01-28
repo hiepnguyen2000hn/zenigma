@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useSignTypedData, useChainId, useSwitchChain } from 'wagmi';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
-import { TOTAL_TOKEN, MAX_PENDING_ORDER, API_ENDPOINTS } from '@/lib/constants';
+import { TOTAL_TOKEN, MAX_PENDING_ORDER, API_ENDPOINTS, BALANCE_PERCISION, PERCISION } from '@/lib/constants';
 import apiClient from '@/lib/api';
 import { useClientProof } from '@/hooks/useClientProof';
 import { useGenerateWalletInit } from '@/hooks/useGenerateWalletInit';
 import { saveAllKeys, signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wallet-utils';
-import { initWalletProof } from '@/lib/services';
+import { initWalletProof, intToDecimal, scaleToInt } from '@/lib/services';
 import toast from 'react-hot-toast';
 
 // ============================================
@@ -266,8 +266,8 @@ function processOrder(
     const { price, qty, side, token_in, token_out } = order.order_data;
 
     // Validate order data
-    const priceBI = BigInt(price);
-    const qtyBI = BigInt(qty);
+    const priceBI = Number(price);
+    const qtyBI = Number(qty);
 
     if (priceBI <= 0n) {
       throw new Error('[calculateNewState] Invalid price: must be greater than 0');
@@ -293,7 +293,7 @@ function processOrder(
     if (side === 0) {
       // BUY: reserve price * qty in token_out (token trả)
       const reserveAmount = priceBI * qtyBI;
-      const availableBalance = BigInt(newState.available_balances[token_out]);
+      const availableBalance = Number(newState.available_balances[token_out]);
       console.log(availableBalance, 'availableBalance token_out', token_out, 'reserveAmount', reserveAmount)
       if (availableBalance < reserveAmount) {
         throw new Error(
@@ -304,22 +304,22 @@ function processOrder(
       // Move from available to reserved
       newState.available_balances[token_out] = (availableBalance - reserveAmount).toString();
       newState.reserved_balances[token_out] = (
-        BigInt(newState.reserved_balances[token_out]) + reserveAmount
+        Number(newState.reserved_balances[token_out]) + reserveAmount
       ).toString();
     } else {
       // SELL: reserve qty in token_out (token trả/bán)
-      const availableBalance = BigInt(newState.available_balances[token_out]);
+      const availableBalance = Number(newState.available_balances[token_out]);
 
-      if (availableBalance < qtyBI) {
+      if (availableBalance < Number(scaleToInt(String(qtyBI), PERCISION))) {
         throw new Error(
-          `[calculateNewState] Insufficient balance for SELL order: have ${availableBalance}, need ${qtyBI} in token ${token_out}`
+          `[calculateNewState] Insufficient balance for SELL order: have ${intToDecimal(String(availableBalance), BALANCE_PERCISION)}, need ${intToDecimal(String(qtyBI), PERCISION)} in token ${token_out}`
         );
       }
-
+      const qtyScaled = Number(scaleToInt(String(qtyBI), PERCISION))
       // Move from available to reserved
-      newState.available_balances[token_out] = (availableBalance - qtyBI).toString();
+      newState.available_balances[token_out] = (availableBalance - qtyScaled).toString();
       newState.reserved_balances[token_out] = (
-        BigInt(newState.reserved_balances[token_out]) + qtyBI
+        Number(newState.reserved_balances[token_out]) + qtyScaled
       ).toString();
     }
 
@@ -345,8 +345,8 @@ function processOrder(
     }
 
     const { price, qty, side, token_in, token_out } = existingOrder;
-    const priceBI = BigInt(price);
-    const qtyBI = BigInt(qty);
+    const priceBI = Number(price);
+    const qtyBI = Number(qty);
 
     // Release reserved balance based on side
     // NOTE: token_out = token trả (token you paid), token_in = token nhận (token you received)
@@ -354,18 +354,19 @@ function processOrder(
       // BUY: release price * qty from reserved_balances[token_out]
       const releaseAmount = priceBI * qtyBI;
       newState.reserved_balances[token_out] = (
-        BigInt(newState.reserved_balances[token_out]) - releaseAmount
+        Number(newState.reserved_balances[token_out]) - releaseAmount
       ).toString();
       newState.available_balances[token_out] = (
-        BigInt(newState.available_balances[token_out]) + releaseAmount
+        Number(newState.available_balances[token_out]) + releaseAmount
       ).toString();
     } else {
       // SELL: release qty from reserved_balances[token_out]
+      const qtyScaled = Number(scaleToInt(String(qtyBI), PERCISION));
       newState.reserved_balances[token_out] = (
-        BigInt(newState.reserved_balances[token_out]) - qtyBI
+        Number(newState.reserved_balances[token_out]) - qtyScaled
       ).toString();
       newState.available_balances[token_out] = (
-        BigInt(newState.available_balances[token_out]) + qtyBI
+        Number(newState.available_balances[token_out]) + qtyScaled
       ).toString();
     }
 
@@ -541,18 +542,7 @@ export function useProof() {
         wallet_address,
         signature,
         publicInputs,
-        // "order_index": operations.order.order_index,
-        // "order_data": {
-        //   "price": operations.order.order_data.price,
-        //   "qty": operations.order.order_data.qty,
-        //   "side": operations.order.order_data.side,
-        //   "token_in": operations.order.order_data.token_in,
-        //   "token_out": operations.order.order_data.token_out,
-        // },
         transfer: operations.transfer,
-        // "order_indices": [
-        //   1
-        // ]
       });
 
       setIsVerifying(false);

@@ -14,6 +14,7 @@
     "@aztec/bb.js": "0.58.0",
     "@noir-lang/backend_barretenberg": "0.36.0",
     "@noir-lang/noir_js": "0.36.0",
+    "@privy-io/chains": "^0.0.6",
     "@privy-io/react-auth": "^3.8.0",
     "@privy-io/wagmi": "^2.0.3",
     "@radix-ui/react-popover": "^1.1.15",

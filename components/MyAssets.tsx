@@ -8,6 +8,7 @@ import { useTokenMapping } from '@/hooks/useTokenMapping';
 import { getTransferHistory, type Transfer } from '@/lib/services';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useUserBalance } from '@/hooks/useUserBalance';
 import { connectSSE, disconnectSSE } from '@/lib/sse.client';
 import Header from './Header';
 import WithdrawModal from './WithdrawModal';
@@ -74,6 +75,7 @@ const MyAssets = () => {
   const { getSymbol } = useTokenMapping();
   const { tokens, isLoading: isLoadingTokens, isLoaded: isTokensLoaded } = useTokens();
   const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
+  const { balance: userBalance, loading: balanceLoading, fetchBalance } = useUserBalance();
 
   // Filter tokens with valid contract addresses for balance reading
   // Only USDC, WETH, USDT (real addresses) will be queried
@@ -210,10 +212,23 @@ const MyAssets = () => {
 
         const transferData = data.data || data;
         if (transferData.status === 'completed') {
-          // Re-fetch profile to update balances
+          // Re-fetch balance to update Zenigma balances
           if (user?.id) {
             const walletId = extractPrivyWalletId(user.id);
-            fetchProfile(walletId);
+            fetchBalance(walletId).then(balanceData => {
+              if (balanceData?.balances) {
+                const assetsList: Asset[] = tokens.map(token => {
+                  const tokenBalance = balanceData.balances.find(
+                    b => b.token_index === token.index
+                  );
+                  return {
+                    tokenIndex: token.index,
+                    balance: tokenBalance?.available || '0',
+                  };
+                });
+                setAssets(assetsList);
+              }
+            });
           }
 
           // Re-fetch transfer history for both DEPOSIT and WITHDRAW
@@ -280,20 +295,32 @@ const MyAssets = () => {
 
       try {
         // Step 1: Fetch profile nếu chưa có
-        let currentProfile = profile;
-        if (!currentProfile) {
+        if (!profile) {
           console.log('📥 [MyAssets] Fetching profile...');
-          currentProfile = await fetchProfile(walletId);
+          await fetchProfile(walletId);
         }
 
         if (isCancelled) return;
 
-        // Step 2: Calculate assets từ profile
-        if (currentProfile) {
-          const assetsList: Asset[] = tokens.map(token => ({
-            tokenIndex: token.index,
-            balance: currentProfile.available_balances?.[token.index] || '0',
-          }));
+        // Step 2: Fetch balance from API only if not already loaded
+        let balanceData = userBalance;
+        if (!userBalance) {
+          console.log('📥 [MyAssets] Fetching balance...');
+          balanceData = await fetchBalance(walletId);
+        }
+
+        if (isCancelled) return;
+
+        if (balanceData?.balances) {
+          const assetsList: Asset[] = tokens.map(token => {
+            const tokenBalance = balanceData!.balances.find(
+              b => b.token_index === token.index
+            );
+            return {
+              tokenIndex: token.index,
+              balance: tokenBalance?.available || '0',
+            };
+          });
           setAssets(assetsList);
         }
 
@@ -323,16 +350,21 @@ const MyAssets = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isTokensLoaded, filters]);
 
-  // Effect: Sync assets when profile changes (for SSE updates)
+  // Effect: Sync assets when userBalance changes (for SSE updates)
   useEffect(() => {
-    if (profile && tokens.length > 0) {
-      const assetsList: Asset[] = tokens.map(token => ({
-        tokenIndex: token.index,
-        balance: profile.available_balances?.[token.index] || '0',
-      }));
+    if (tokens.length > 0 && userBalance?.balances) {
+      const assetsList: Asset[] = tokens.map(token => {
+        const tokenBalance = userBalance.balances.find(
+          b => b.token_index === token.index
+        );
+        return {
+          tokenIndex: token.index,
+          balance: tokenBalance?.available || '0',
+        };
+      });
       setAssets(assetsList);
     }
-  }, [profile, tokens]);
+  }, [tokens, userBalance]);
 
   // Effect: Cleanup khi logout
   useEffect(() => {
@@ -402,7 +434,7 @@ const MyAssets = () => {
                         Sign in to view your assets.
                       </td>
                     </tr>
-                  ) : (loading || isLoadingTokens || profileLoading || isLoadingWalletBalances) && assets.length === 0 ? (
+                  ) : (loading || isLoadingTokens || profileLoading || balanceLoading || isLoadingWalletBalances) && assets.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
                         Loading assets...

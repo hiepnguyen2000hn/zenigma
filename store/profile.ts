@@ -16,6 +16,9 @@ export interface TokenBalance {
   total: string;
 }
 
+export interface UserBalance {
+  balances: TokenBalance[]
+}
 export interface UserProfile {
   // Backend response fields
   _id?: string;
@@ -50,12 +53,19 @@ export interface UserProfile {
 
 // Profile atom - store current user profile
 export const userProfileAtom = atom<UserProfile | null>(null);
+export const userBalanceAtom = atom<UserBalance | null>(null);
 
 // Loading state
 export const profileLoadingAtom = atom<boolean>(false);
 
 // Error state
 export const profileErrorAtom = atom<string | null>(null);
+
+// Balance loading state
+export const balanceLoadingAtom = atom<boolean>(false);
+
+// Balance error state
+export const balanceErrorAtom = atom<string | null>(null);
 
 // ============================================
 // DERIVED ATOMS
@@ -236,5 +246,44 @@ export const updateMerkleDataAtom = atom(
       ...profile,
       ...data,
     });
+  }
+);
+
+// ============================================
+// BALANCE ACTIONS (WRITE ATOMS)
+// ============================================
+
+// Update user balance
+export const updateUserBalanceAtom = atom(
+  null,
+  (get, set, balance: UserBalance) => {
+    set(userBalanceAtom, balance);
+    set(balanceErrorAtom, null);
+  }
+);
+
+// Set balance loading state
+export const setBalanceLoadingAtom = atom(
+  null,
+  (get, set, loading: boolean) => {
+    set(balanceLoadingAtom, loading);
+  }
+);
+
+// Set balance error state
+export const setBalanceErrorAtom = atom(
+  null,
+  (get, set, error: string | null) => {
+    set(balanceErrorAtom, error);
+  }
+);
+
+// Clear balance (logout)
+export const clearBalanceAtom = atom(
+  null,
+  (get, set) => {
+    set(userBalanceAtom, null);
+    set(balanceLoadingAtom, false);
+    set(balanceErrorAtom, null);
   }
 );
