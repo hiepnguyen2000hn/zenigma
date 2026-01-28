@@ -5,6 +5,7 @@ import { tradingPairAtom } from '@/store/trading';
 import { userProfileAtom } from '@/store/profile';
 import { connectSSE, disconnectSSE } from '@/lib/sse.client';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useUserBalance } from '@/hooks/useUserBalance';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
 import Header from './Header';
 import Sidebar from './Sidebar';
@@ -27,6 +28,9 @@ const TradingDashboard = ({ pair = 'btc-usdt' }: TradingDashboardProps) => {
     // Get profile for walletId
     const profile = useAtomValue(userProfileAtom);
     const { fetchProfile } = useUserProfile();
+
+    // Fetch balance for PortfolioSidebar real-time updates
+    const { fetchBalance } = useUserBalance();
 
     // Token mapping for SSE toast messages
     const { getSymbol } = useTokenMapping();
@@ -60,9 +64,10 @@ const TradingDashboard = ({ pair = 'btc-usdt' }: TradingDashboardProps) => {
 
                 case 'transfer:status': {
                     console.log('[SSE] transfer:status:', data);
-                    // Re-fetch profile to update balances
+                    // Re-fetch profile and balance to update PortfolioSidebar
                     if (profile?.wallet_id) {
                         fetchProfile(profile.wallet_id);
+                        fetchBalance(profile.wallet_id);
                     }
                     // Show toast based on transfer direction and status
                     const transferData = data.data || data;
@@ -80,9 +85,10 @@ const TradingDashboard = ({ pair = 'btc-usdt' }: TradingDashboardProps) => {
 
                 case 'order:status': {
                     console.log('[SSE] order:status:', data);
-                    // Re-fetch profile to get updated orders_list
+                    // Re-fetch profile and balance to update PortfolioSidebar
                     if (profile?.wallet_id) {
                         fetchProfile(profile.wallet_id);
+                        fetchBalance(profile.wallet_id);
                     }
                     // Trigger OrderPanel to refetch orders
                     setOrderRefetchTrigger(prev => prev + 1);
@@ -108,7 +114,7 @@ const TradingDashboard = ({ pair = 'btc-usdt' }: TradingDashboardProps) => {
         } catch (error) {
             console.error('[SSE] Error parsing message:', error, event.data);
         }
-    }, [profile?.wallet_id, fetchProfile, getSymbol]);
+    }, [profile?.wallet_id, fetchProfile, fetchBalance, getSymbol]);
 
     // ============================================
     // SSE Connection Effect

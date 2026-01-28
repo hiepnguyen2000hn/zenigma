@@ -178,10 +178,8 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
 
             // Step 4: Generate proof
             console.log('🔐 Step 4: Generating wallet update proof...');
-            const userSecret = '12312';
 
             const proofData = await generateWalletUpdateProofClient({
-                userSecret,
                 oldNonce: profile.nonce?.toString() || '0',
                 oldMerkleRoot: profile.merkle_root,
                 oldMerkleIndex: profile.merkle_index,

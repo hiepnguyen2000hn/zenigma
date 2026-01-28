@@ -20,6 +20,9 @@ export const MOCK_USDC_ADDRESS = process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS as `0
 // Mock USDT contract address
 export const MOCK_USDT_ADDRESS = process.env.NEXT_PUBLIC_MOCK_USDT_ADDRESS as `0x${string}`;
 
+export const PERCISION = 10000;
+
+export const BALANCE_PERCISION = PERCISION * PERCISION;
 // ============================================
 // ERC20 TOKEN CONFIGURATION
 // ============================================
@@ -97,6 +100,7 @@ export const API_ENDPOINTS = {
   // User
   USER: {
     PROFILE: `${API_PREFIX}/user/:id/profile`,
+    BALANCE: `${API_PREFIX}/user/:id/balance`,
     UPDATE_PROFILE: `${API_PREFIX}/user/profile`,
   },
 

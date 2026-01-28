@@ -18,6 +18,8 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import toast from 'react-hot-toast';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
+import { intToDecimal, scaleToInt } from '@/lib/services';
+import { BALANCE_PERCISION, PERCISION } from '@/lib/constants';
 
 interface SidebarProps {
     selectedCrypto: string;
@@ -203,7 +205,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
 
             console.log(tokenIn, tokenOut, 'check------------');
             // ✅ Get price from input or default to '1'
-            const orderPrice = orderInput.limitPrice || '1';
+            const orderPriceScaled = scaleToInt(orderInput.limitPrice || '0', PERCISION);
+            const orderQtyScaled = scaleToInt(orderInput.amount || '0', PERCISION);
 
             console.log('🔍 Token calculation:', {
                 pair: pair,
@@ -220,8 +223,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 operation_type: 0, // 0 = CREATE_ORDER
                 order_index: availableSlot,    // ✅ Slot trống đầu tiên
                 order_data: {
-                    price: orderPrice,         // ✅ Từ limitPrice input
-                    qty: orderInput.amount || '0',    // ✅ Từ amount input
+                    price: orderPriceScaled,         // ✅ Từ limitPrice input
+                    qty: orderQtyScaled,    // ✅ Từ amount input
                     side: orderInput.side === 'buy' ? 0 : 1,  // ✅ 0=buy, 1=sell
                     token_in: tokenIn,         // ✅ Token nhận (động từ store)
                     token_out: tokenOut,       // ✅ Token trả (động từ store)
@@ -233,8 +236,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 details: {
                     pair: pair.symbol,
                     side: orderInput.side,
-                    amount: orderInput.amount,
-                    price: orderPrice,
+                    amount: orderQtyScaled,
+                    price: orderPriceScaled,
                     slot: availableSlot,
                     tokenInName: orderInput.side === 'buy' ? pair.base : pair.quote,   // BUY: nhận WBTC
                     tokenOutName: orderInput.side === 'buy' ? pair.quote : pair.base,  // BUY: trả USDC
@@ -252,17 +255,15 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             console.log('✅ New state calculated:', {
                 availableBalances: newState.available_balances.slice(0, 3),
                 reservedBalances: newState.reserved_balances.slice(0, 3),
-                activeOrders: newState.orders_list.filter(o => o !== null).length,
+                activeOrders: newState.orders_list.filter(o => o !== null),
                 operations
             });
 
             // Generate proof
             setProcessingStep('Generating proof (this may take a moment)...');
             console.log('🔐 Step 4: Generating wallet update proof...', newState);
-            const userSecret = '12312'; // TODO: Get from secure storage
 
             const proofData = await generateWalletUpdateProofClient({
-                userSecret,
                 oldNonce: profileData.nonce?.toString() || '0',
                 oldMerkleRoot: profileData.merkle_root,
                 oldMerkleIndex: profileData.merkle_index,
@@ -321,12 +322,14 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     // ✅ Get balances for current trading pair
     const baseBalance = getTokenBalance(baseSymbol);
     const quoteBalance = getTokenBalance(quoteSymbol);
-
     // ✅ Validate amount against available balance
     const amountValidation = useMemo(() => {
+        const baseBalanceScaled = scaleToInt(baseBalance.available, BALANCE_PERCISION);
+        const quoteBalanceScaled = scaleToInt(quoteBalance.available, BALANCE_PERCISION);
         const amount = parseFloat(orderInput.amount || '0');
         const price = parseFloat(orderInput.limitPrice || '1');
-
+        const orderQtyScaled = scaleToInt(orderInput.amount, PERCISION);
+        const orderPriceScaled = scaleToInt(String(price), PERCISION);
         // Skip validation if amount is 0 or empty
         if (!orderInput.amount || amount <= 0) {
             return { isValid: true, error: null };
@@ -334,23 +337,23 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
 
         if (orderInput.side === 'buy') {
             // BUY: Need amount * price in quote token (USDC)
-            const requiredQuote = amount * price;
-            const availableQuote = parseFloat(quoteBalance.available || '0');
+            const requiredQuote = Number(orderPriceScaled) * Number(orderQtyScaled);
+            const availableQuote = Number(quoteBalanceScaled || '0');
 
             if (requiredQuote > availableQuote) {
                 return {
                     isValid: false,
-                    error: `Insufficient ${quoteSymbol}. Need ${requiredQuote.toFixed(2)}, have ${availableQuote.toFixed(2)}`
+                    error: `Insufficient ${quoteSymbol}. Need ${intToDecimal(String(requiredQuote), BALANCE_PERCISION)}, have ${intToDecimal(String(availableQuote), BALANCE_PERCISION)}`
                 };
             }
         } else {
             // SELL: Need amount in base token (WBTC)
-            const availableBase = parseFloat(baseBalance.available || '0');
+            const availableBase = Number(baseBalanceScaled);
 
-            if (amount > availableBase) {
+            if (Number(scaleToInt(String(amount), PERCISION)) > availableBase) {
                 return {
                     isValid: false,
-                    error: `Insufficient ${baseSymbol}. Need ${amount.toFixed(6)}, have ${availableBase.toFixed(6)}`
+                    error: `Insufficient ${baseSymbol}. Need ${intToDecimal(String(amount), PERCISION)}, have ${intToDecimal(String(availableBase), BALANCE_PERCISION)}`
                 };
             }
         }

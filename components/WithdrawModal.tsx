@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import Stepper, { Step } from './Stepper';
-import { DARKPOOL_CORE_ADDRESS, MOCK_USDC_ADDRESS } from '@/lib/constants';
+import { BALANCE_PERCISION, DARKPOOL_CORE_ADDRESS, MOCK_USDC_ADDRESS } from '@/lib/constants';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokens } from '@/hooks/useTokens';
-import { type Token, getUserProfile } from '@/lib/services';
+import { type Token, getUserProfile, scaleToInt } from '@/lib/services';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
@@ -164,12 +164,13 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
             });
 
             // Step 3: Create TransferAction for WITHDRAW
+            const withdrawAmountScaled = scaleToInt(amount, BALANCE_PERCISION);
+
             const action: TransferAction = {
                 type: 'transfer',
-                direction: 1,  // ✅ 1 = WITHDRAW
+                direction: 1,
                 token_index: selectedToken.index,
-                amount: amount,
-                // ✅ Permit2 data from signPermit2FE
+                amount: withdrawAmountScaled,
                 permit2Nonce: permit2Data.permit2Nonce.toString(),
                 permit2Deadline: permit2Data.permit2Deadline.toString(),
                 permit2Signature: permit2Data.permit2Signature
@@ -184,18 +185,11 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
                 profile.nonce || 0
             );
 
-            console.log('✅ New state calculated:');
-            console.log(`  - Available Balances: [${newState.available_balances.slice(0, 3).join(', ')}...]`);
-            console.log(`  - New Blinder: ${newState.blinder?.substring(0, 20)}...`);
-            console.log('  - Operations:', operations);
-
             // Step 5: Generate proof
             setProcessingStep('Generating proof (this may take a moment)...');
             console.log('🔐 Step 5: Generating wallet update proof...');
-            const userSecret = '12312';
 
             const proofData = await generateWalletUpdateProofClient({
-                userSecret,
                 oldNonce: profile.nonce?.toString() || '0',
                 oldMerkleRoot: profile.merkle_root,
                 oldMerkleIndex: profile.merkle_index,
@@ -217,6 +211,9 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
             // Step 7: Verify proof
             setProcessingStep('Verifying proof...');
             console.log('🔍 Step 7: Verifying proof...');
+            if (operations.transfer) {
+                operations.transfer.amount = amount
+            }
             const verifyResult = await verifyProof({
                 proof: proofData.proof,
                 publicInputs: proofData.publicInputs,
