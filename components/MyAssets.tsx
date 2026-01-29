@@ -420,10 +420,10 @@ const MyAssets = () => {
                       Asset
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Balance Wallet
+                      Wallet Balance
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Balance Zenigma
+                      Zenigma Balance
                     </th>
                   </tr>
                 </thead>

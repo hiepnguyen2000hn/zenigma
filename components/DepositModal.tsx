@@ -8,7 +8,7 @@ import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
 import { DARKPOOL_CORE_ADDRESS, PERMIT2_ADDRESS, getAvailableERC20Tokens, BALANCE_PERCISION } from '@/lib/constants';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokens } from '@/hooks/useTokens';
-import { type Token, getUserProfile, scaleToInt } from '@/lib/services';
+import { type Token, getUserProfile, scaleToInt, limitDecimalPlaces, getErrorMessage } from '@/lib/services';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
@@ -223,7 +223,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 console.log('✅ Profile loaded:', profile);
 
                 // Check if account is locked
-                if (profile && profile.is_locked) {
+                if (profile && (profile.is_locked || !profile.sync)) {
                     toast('System is synchronizing, please try again in a few minutes', {
                         icon: '⚠️',
                         duration: 4000,
@@ -353,7 +353,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success('Please allow a few minutes for the system to sync', {
+                        toast.success('Your deposit is queued, please allow a few minutes for it to sync', {
                             duration: 5000,
                         });
                     } else {
@@ -454,7 +454,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 console.log('✅ Profile loaded:', profile);
 
                 // Check if account is locked
-                if (profile && profile.is_locked) {
+                if (profile && (profile.is_locked || !profile.sync)) {
                     toast('System is synchronizing, please try again in a few minutes', {
                         icon: '⚠️',
                         duration: 4000,
@@ -580,7 +580,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success('Please allow a few minutes for the system to sync', {
+                        toast.success('Your deposit is queued, please allow a few minutes for it to sync', {
                             duration: 5000,
                         });
                     } else {
@@ -607,7 +607,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             handleClose(); // ✅ Close modal and reset state
         } catch (error) {
             console.error('❌ Error in deposit process:', error);
-            toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
+            toast.error(getErrorMessage(error));
             // Error - hide loading overlay, keep modal open for user to retry
             setIsProcessing(false);
             setProcessingStep('');
@@ -853,9 +853,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                         </label>
                                         <div className="relative">
                                             <input
-                                                type="number"
+                                                type="text"
                                                 value={amount}
-                                                onChange={(e) => setAmount(e.target.value)}
+                                                onChange={(e) => setAmount(limitDecimalPlaces(e.target.value))}
                                                 placeholder="0.00"
                                                 className="w-full px-3 py-2.5 pr-20 bg-gray-800/50 border border-gray-700/70 rounded-lg text-white text-sm focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all"
                                             />

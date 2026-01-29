@@ -91,6 +91,7 @@ export interface UserProfile {
   last_tx_hash?: string;
   created_at: string;
   updated_at: string;
+  is_locked: boolean;
 }
 
 export interface VerifyProofRequest {
@@ -362,4 +363,38 @@ export function intToDecimal(value: string, precision: number): string {
   const intPart = str.slice(0, str.length - decimals);
   const fracPart = str.slice(str.length - decimals).replace(/0+$/, '');
   return fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
+export function limitDecimalPlaces(value: string, maxDecimals: number = 4): string {
+  if (!value) return value;
+
+  const parts = value.split('.');
+
+  if (parts.length === 1) return value;
+
+  const integerPart = parts[0];
+  const decimalPart = parts[1].slice(0, maxDecimals);
+
+  return `${integerPart}.${decimalPart}`;
+}
+
+/**
+ * Get user-friendly error message from error object
+ * Handles common errors like user rejection
+ */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    // User rejected the transaction/request
+    if (message.includes('user rejected') || message.includes('user denied')) {
+      return 'Transaction was cancelled';
+    }
+
+    // Return first line of error message (before "Details:" or "Version:")
+    const firstLine = error.message.split('\n')[0];
+    return firstLine || 'An error occurred';
+  }
+
+  return 'An unknown error occurred';
 }

@@ -15,6 +15,8 @@ import PortfolioSidebar from './PortfolioSidebar';
 import ProfileLoader from './ProfileLoader';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { intToDecimal } from '@/lib/services';
+import { PERCISION } from '@/lib/constants';
 
 interface TradingDashboardProps {
     pair?: string;
@@ -99,11 +101,11 @@ const TradingDashboard = ({ pair = 'btc-usdt' }: TradingDashboardProps) => {
                     const qty = orderData.qty || '0';
                     const state = orderData.state;
                     if (state === 'Created') {
-                        toast.success(`Order created: ${side} ${qty} ${tokenInSymbol}`);
+                        toast.success(`Order created: ${side} ${intToDecimal(String(qty), PERCISION)} ${tokenInSymbol}`);
                     } else if (state === 'Cancelled') {
-                        toast.success(`Order cancelled: ${side} ${qty} ${tokenInSymbol}`);
+                        toast.success(`Order cancelled: ${side} ${intToDecimal(String(qty), PERCISION)} ${tokenInSymbol}`);
                     } else if (state === 'Filled') {
-                        toast.success(`Order filled: ${side} ${qty} ${tokenInSymbol}`);
+                        toast.success(`Order filled: ${side} ${intToDecimal(String(qty), PERCISION)} ${tokenInSymbol}`);
                     }
                     break;
                 }

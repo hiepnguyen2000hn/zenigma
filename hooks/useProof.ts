@@ -8,7 +8,7 @@ import { useClientProof } from '@/hooks/useClientProof';
 import { useGenerateWalletInit } from '@/hooks/useGenerateWalletInit';
 import { saveAllKeys, signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wallet-utils';
-import { initWalletProof, intToDecimal, scaleToInt } from '@/lib/services';
+import { initWalletProof, intToDecimal, scaleToInt, getErrorMessage } from '@/lib/services';
 import toast from 'react-hot-toast';
 
 // ============================================
@@ -832,7 +832,7 @@ export function useProof() {
           wallet_id: payload.wallet_id
         });
 
-        toast.success('Please allow a few minutes for the system to sync');
+        toast.success('Your wallet initialization is queued, please allow a few minutes for it to sync');
       } else {
         console.log('ℹ️ [initWalletClientSide] Wallet already initialized, skipping API call');
       }
@@ -843,7 +843,7 @@ export function useProof() {
 
     } catch (error) {
       console.error('❌ [initWalletClientSide] Error:', error);
-      toast.error(error instanceof Error ? error.message : 'Unknown error');
+      toast.error(getErrorMessage(error));
       setIsInitializing(false);
       setInitStep('');
       return false;
