@@ -44,6 +44,7 @@ export interface UserProfile {
   blinder?: string;
   is_initialized?: boolean;              // Whether wallet is initialized
   sync: boolean;
+  is_locked?: boolean;                   // Whether account is locked
   last_tx_hash?: string;
 
   // Timestamps

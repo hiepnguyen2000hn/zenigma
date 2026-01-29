@@ -157,17 +157,17 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             // Check if account is locked
             if (profileData && profileData.is_locked) {
                 toast('System is synchronizing, please try again in a few minutes', {
-                    icon: '⏳',
+                    icon: '⚠️',
                     duration: 4000,
                     style: {
                         borderRadius: '12px',
                         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
                         color: '#fff',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        border: '1px solid rgba(251, 191, 36, 0.5)',
                         padding: '16px 20px',
                         fontSize: '14px',
                         fontWeight: '500',
-                        boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)',
+                        boxShadow: '0 10px 40px rgba(251, 191, 36, 0.15), 0 0 0 1px rgba(251, 191, 36, 0.1)',
                     },
                 });
                 setIsProcessing(false);
