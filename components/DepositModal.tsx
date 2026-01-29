@@ -222,8 +222,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 const profile = await getUserProfile(walletId);
                 console.log('✅ Profile loaded:', profile);
 
-                // Check if system is syncing
-                if (profile.sync === false) {
+                // Check if account is locked
+                if (profile && profile.is_locked) {
                     toast('System is synchronizing, please try again in a few minutes', {
                         icon: '⏳',
                         duration: 4000,
@@ -453,8 +453,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 const profile = await getUserProfile(walletId);
                 console.log('✅ Profile loaded:', profile);
 
-                // Check if system is syncing
-                if (profile.sync === false) {
+                // Check if account is locked
+                if (profile && profile.is_locked) {
                     toast('System is synchronizing, please try again in a few minutes', {
                         icon: '⏳',
                         duration: 4000,

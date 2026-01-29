@@ -154,8 +154,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             const profileData = await fetchProfile(walletId);
             console.log('✅ Profile loaded and stored:', profileData);
 
-            // Check if system is syncing
-            if (profileData.sync === false) {
+            // Check if account is locked
+            if (profileData && profileData.is_locked) {
                 toast('System is synchronizing, please try again in a few minutes', {
                     icon: '⏳',
                     duration: 4000,
