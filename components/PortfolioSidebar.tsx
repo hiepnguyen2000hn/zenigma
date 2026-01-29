@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
+import { useRouter } from "next/navigation";
 import { usePrivy, useWallets, useLogin } from '@privy-io/react-auth';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useUserBalance } from '@/hooks/useUserBalance';
@@ -34,6 +35,7 @@ interface PortfolioSidebarProps {
 const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const [shouldInitZenigma, setShouldInitZenigma] = useState(false);
+    const router = useRouter();
 
     // Get Privy wallet address and logout
     const { user, logout } = usePrivy();
@@ -105,7 +107,7 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
             if (success && user?.id) {
                 const walletId = extractPrivyWalletId(user.id);
                 await fetchProfile(walletId);
-                toast.success('Please allow a few minutes for the system to sync');
+                toast.success('Your wallet initialization is queued, please allow a few minutes for it to sync');
             }
         } catch (error) {
             console.error('❌ [PortfolioSidebar] Zenigma init error:', error);
@@ -430,8 +432,13 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                         className="flex items-center justify-between px-3 py-2"
                     >
                         <h2 className="text-base font-semibold text-white">Assets</h2>
-                        <div className="flex items-center space-x-1 text-white cursor-pointer hover:text-gray-300 transition-colors">
-                            <span className="text-sm font-medium">${totalPortfolioValue.toFixed(2)}</span>
+                        <div
+                            onClick={() => router.push("/assets")}   // ← route bạn muốn
+                            className="flex items-center space-x-1 text-white cursor-pointer hover:text-gray-300 transition-colors"
+                        >
+                            <span className="text-sm font-medium">
+                                ${totalPortfolioValue.toFixed(2)}
+                            </span>
                             <ChevronRight size={16} />
                         </div>
                     </motion.div>
@@ -526,28 +533,6 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                             )}
                         </motion.div>
                     </div>
-
-                    {/* Bridge & Deposit Section */}
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: isOpen ? 1 : 0 }}
-                        transition={{ delay: isOpen ? 0.25 : 0 }}
-                        className="mt-auto p-3 border-t border-gray-800"
-                    >
-                        <div className="text-gray-500 text-xs mb-3">Bridge & Deposit</div>
-                        <button className="w-full flex items-center space-x-3 p-3 bg-gray-900/50 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors cursor-pointer">
-                            <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center text-gray-500">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                            </div>
-                            <div className="text-left">
-                                <div className="text-white text-sm font-medium">Connect Solana Wallet</div>
-                                <div className="text-gray-500 text-xs">To bridge & deposit USDC</div>
-                            </div>
-                        </button>
-                    </motion.div>
 
                 </div>
             </motion.aside>

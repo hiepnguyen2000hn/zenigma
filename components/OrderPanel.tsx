@@ -6,7 +6,7 @@ import { useWallets } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
 import { useState, useEffect, useRef } from 'react';
-import { getOrderList, getUserProfile, type Order } from '@/lib/services';
+import { getOrderList, getUserProfile, type Order, getErrorMessage } from '@/lib/services';
 import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wallet-utils';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
@@ -56,6 +56,8 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [cancellingOrderIndex, setCancellingOrderIndex] = useState<number | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [processingStep, setProcessingStep] = useState('');
 
     // Dropdown states
     const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
@@ -118,6 +120,8 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
     const handleCancelOrder = async (orderIndex: number) => {
         try {
             setCancellingOrderIndex(orderIndex);
+            setIsProcessing(true);
+            setProcessingStep('Initializing...');
             console.log('🚫 Starting cancel order process...', { orderIndex });
 
             // Get wallet address
@@ -125,6 +129,7 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
             if (!walletAddress) {
                 toast.error('Please connect wallet first!');
                 setCancellingOrderIndex(null);
+                setIsProcessing(false);
                 return;
             }
 
@@ -132,51 +137,57 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
             if (!user?.id) {
                 toast.error('Please authenticate with Privy first!');
                 setCancellingOrderIndex(null);
+                setIsProcessing(false);
                 return;
             }
 
             // Check and switch to Sepolia if needed
-            const canProceed = await ensureSepoliaChain(chainId, switchChainAsync);
+            setProcessingStep('Checking network...');
+            const canProceed = await ensureSepoliaChain(chainId, switchChainAsync, setProcessingStep);
             if (!canProceed) {
                 setCancellingOrderIndex(null);
+                setIsProcessing(false);
                 return;
             }
 
             // Step 1: Get user profile and old state
+            setProcessingStep('Fetching wallet state...');
             console.log('📊 Step 1: Fetching user profile...');
             const walletId = extractPrivyWalletId(user.id);
-            const profile = await getUserProfile(walletId);
-            console.log('✅ Profile loaded:', profile);
+            const profileData = await getUserProfile(walletId);
+            console.log('✅ Profile loaded:', profileData);
 
-            // Check if account is locked
-            if (profile && profile.is_locked) {
+            // Check if system is syncing
+            if (profileData && (profileData.is_locked || !profileData.sync)) {
                 toast('System is synchronizing, please try again in a few minutes', {
-                    icon: '⚠️',
+                    icon: '⏳',
                     duration: 4000,
                     style: {
                         borderRadius: '12px',
                         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
                         color: '#fff',
-                        border: '1px solid rgba(251, 191, 36, 0.5)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
                         padding: '16px 20px',
                         fontSize: '14px',
                         fontWeight: '500',
-                        boxShadow: '0 10px 40px rgba(251, 191, 36, 0.15), 0 0 0 1px rgba(251, 191, 36, 0.1)',
+                        boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)',
                     },
                 });
-                setIsCancelling(null);
+                setCancellingOrderIndex(null);
+                setIsProcessing(false);
                 return;
             }
 
             const oldState: WalletState = {
-                available_balances: profile.available_balances || Array(10).fill('0'),
-                reserved_balances: profile.reserved_balances || Array(10).fill('0'),
-                orders_list: profile.orders_list || Array(4).fill(null),
-                fees: profile.fees?.toString() || '0',
-                blinder: profile.blinder,
+                available_balances: profileData.available_balances || Array(10).fill('0'),
+                reserved_balances: profileData.reserved_balances || Array(10).fill('0'),
+                orders_list: profileData.orders_list || Array(4).fill(null),
+                fees: profileData.fees?.toString() || '0',
+                blinder: profileData.blinder,
             };
 
             // Step 2: Create OrderAction for cancel
+            setProcessingStep('Creating cancel action...');
             console.log('🔐 Step 2: Creating cancel order action...');
             const action: OrderAction = {
                 type: 'order',
@@ -185,11 +196,12 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
             };
 
             // Step 3: Calculate new state
+            setProcessingStep('Calculating new state...');
             console.log('🔐 Step 3: Calculating new state...');
             const { newState, operations } = await calculateNewState(
                 oldState,
                 action,
-                profile.nonce || 0
+                profileData.nonce || 0
             );
 
             console.log('✅ New state calculated:');
@@ -197,13 +209,14 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
             console.log('  - Operations:', operations);
 
             // Step 4: Generate proof
+            setProcessingStep('Generating proof (this may take a moment)...');
             console.log('🔐 Step 4: Generating wallet update proof...');
 
             const proofData = await generateWalletUpdateProofClient({
-                oldNonce: profile.nonce?.toString() || '0',
-                oldMerkleRoot: profile.merkle_root,
-                oldMerkleIndex: profile.merkle_index,
-                oldHashPath: profile.sibling_paths,
+                oldNonce: profileData.nonce?.toString() || '0',
+                oldMerkleRoot: profileData.merkle_root,
+                oldMerkleIndex: profileData.merkle_index,
+                oldHashPath: profileData.sibling_paths,
                 oldState,
                 newState,
                 operations
@@ -212,12 +225,14 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
             console.log('✅ Proof generated successfully:', proofData);
 
             // Step 5: Sign newCommitment
+            setProcessingStep('Signing transaction...');
             console.log('🔍 Step 5: Signing newCommitment...');
             const newCommitment = proofData.publicInputs.new_wallet_commitment;
             const rootSignature = await signMessageWithSkRoot(newCommitment);
             console.log('✅ Signature created!');
 
             // Step 6: Call cancelOrder API
+            setProcessingStep('Submitting cancellation...');
             console.log('🔍 Step 6: Calling cancelOrder API...');
             const result = await cancelOrder({
                 proof: proofData.proof,
@@ -230,7 +245,7 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
             if (result.success) {
                 console.log('✅ Order cancelled successfully!', result);
                 if (result.verified) {
-                    toast.success('Order cancelled successfully!');
+                    toast.success('Your cancel order is queued, please allow a few minutes for it to sync');
                     // ✅ Refetch orders to update list
                     const response = await getOrderList(walletId, filters);
                     setOrders(response.data || []);
@@ -243,10 +258,12 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
             }
 
             setCancellingOrderIndex(null);
+            setIsProcessing(false);
         } catch (error) {
             console.error('❌ Error in cancel order process:', error);
-            toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
+            toast.error(getErrorMessage(error));
             setCancellingOrderIndex(null);
+            setIsProcessing(false);
         }
     };
 
@@ -321,7 +338,17 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
 
     const hasOrders = orders.length > 0;
     return (
-        <div className="bg-black border-t border-gray-800">
+        <>
+            {/* ✅ Fullscreen Loading Overlay - shows when cancelling order */}
+            {isProcessing && (
+                <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md">
+                    <div className="w-20 h-20 border-4 border-red-500/30 border-t-red-500 rounded-full animate-spin"></div>
+                    <div className="text-white font-medium text-xl mt-6">{processingStep}</div>
+                    <div className="text-gray-400 text-sm mt-2">Please wait, do not close this window...</div>
+                </div>
+            )}
+
+            <div className="bg-black border-t border-gray-800">
             <div className="flex items-center justify-between px-6 py-3 border-b border-gray-800">
                 <div className="flex items-center space-x-4">
                     <button className="flex items-center space-x-2 text-sm">
@@ -639,6 +666,7 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
                 </table>
             </div>
         </div>
+        </>
     );
 };
 

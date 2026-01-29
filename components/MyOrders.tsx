@@ -5,7 +5,7 @@ import { ChevronDown, Calendar, X, Circle } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
-import { getOrderList, getMatchingHistory, getUserProfile, type Order, type MatchingHistory } from '@/lib/services';
+import { getOrderList, getMatchingHistory, getUserProfile, type Order, type MatchingHistory, getErrorMessage } from '@/lib/services';
 import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wallet-utils';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
@@ -303,7 +303,7 @@ const MyOrders = () => {
       });
 
       if (result.success && result.verified) {
-        toast.success('Order cancelled successfully!');
+        toast.success('Your cancel order is queued, please allow a few minutes for it to sync');
         const response = await getOrderList(walletId, filters);
         setOrders(response.data || []);
       } else {
@@ -317,7 +317,7 @@ const MyOrders = () => {
       });
     } catch (error) {
       console.error('❌ Error in cancel order process:', error);
-      toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
+      toast.error(getErrorMessage(error));
       setCancellingOrders(prev => {
         const newSet = new Set(prev);
         newSet.delete(orderIndex);
@@ -638,7 +638,7 @@ const MyOrders = () => {
                     Order Value
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Filled [%]
+                    Filled
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Time

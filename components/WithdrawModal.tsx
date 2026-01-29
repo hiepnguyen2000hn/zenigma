@@ -3,19 +3,17 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import Stepper, { Step } from './Stepper';
-import { BALANCE_PERCISION, DARKPOOL_CORE_ADDRESS, MOCK_USDC_ADDRESS } from '@/lib/constants';
+import { BALANCE_PERCISION } from '@/lib/constants';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokens } from '@/hooks/useTokens';
-import { type Token, getUserProfile, scaleToInt } from '@/lib/services';
+import { type Token, getUserProfile, scaleToInt, limitDecimalPlaces, intToDecimal, getErrorMessage } from '@/lib/services';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
-import { usePermit2Signature } from '@/hooks/usePermit2Signature';
 import { type TransferAction, type WalletState } from '@/hooks/useProof';
 import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wallet-utils';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
-import { parseUnits } from 'viem';
 import toast from 'react-hot-toast';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
@@ -58,7 +56,6 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
     // Proof hooks
     const { verifyProof, calculateNewState } = useProof();
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
-    const { signPermit2FE } = usePermit2Signature();
 
     // ✅ Fetch DarkPool balances when modal opens
     useEffect(() => {
@@ -96,12 +93,11 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
             console.log('💸 Starting withdraw process...', { selectedToken, selectedNetwork, amount });
             console.log('📋 Withdraw Flow:');
             console.log('  1. Fetch user profile');
-            console.log('  2. Sign Permit2 (required for withdraw)');
-            console.log('  3. Create TransferAction (direction: 1 = WITHDRAW)');
-            console.log('  4. Calculate new state');
-            console.log('  5. Generate proof');
-            console.log('  6. Sign commitment');
-            console.log('  7. Verify proof');
+            console.log('  2. Create TransferAction (direction: 1 = WITHDRAW)');
+            console.log('  3. Calculate new state');
+            console.log('  4. Generate proof');
+            console.log('  5. Sign commitment');
+            console.log('  6. Verify proof');
 
             if (!selectedToken || !amount) {
                 toast.error('Missing required fields');
@@ -139,7 +135,7 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
             console.log('✅ Profile loaded:', profile);
 
             // Check if account is locked
-            if (profile && profile.is_locked) {
+            if (profile && (profile.is_locked || !profile.sync)) {
                 toast('System is synchronizing, please try again in a few minutes', {
                     icon: '⚠️',
                     duration: 4000,
@@ -167,48 +163,37 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
                 blinder: profile.blinder,
             };
 
-            // Step 2: Sign Permit2 (required for WITHDRAW)
-            setProcessingStep('Signing Permit2...');
-            console.log('🔍 Step 2: Signing Permit2...');
-            console.log(`  - Token: ${selectedToken.symbol} (${selectedToken.address})`);
-            console.log(`  - Amount: ${amount} (${parseUnits(amount, selectedToken.decimals)} wei)`);
+            // Step 2: Create TransferAction for WITHDRAW (no Permit2 needed)
+            setProcessingStep('Creating withdraw action...');
+            console.log('🔍 Step 2: Creating withdraw action...');
+            console.log(`  - Token: ${selectedToken.symbol} (index: ${selectedToken.index})`);
+            console.log(`  - Amount: ${amount}`);
 
-            const permit2Data = await signPermit2FE({
-                token: selectedToken.address, // ✅ Use selected token address
-                amount: parseUnits(amount, selectedToken.decimals), // ✅ Convert to token decimals
-                spender: DARKPOOL_CORE_ADDRESS,
-            });
-            console.log('✅ Permit2 signed:', {
-                nonce: permit2Data.permit2Nonce.toString(),
-                deadline: permit2Data.permit2Deadline.toString(),
-                signature: permit2Data.permit2Signature.substring(0, 20) + '...'
-            });
-
-            // Step 3: Create TransferAction for WITHDRAW
             const withdrawAmountScaled = scaleToInt(amount, BALANCE_PERCISION);
 
             const action: TransferAction = {
                 type: 'transfer',
-                direction: 1,
+                direction: 1, // 1 = WITHDRAW
                 token_index: selectedToken.index,
                 amount: withdrawAmountScaled,
-                permit2Nonce: permit2Data.permit2Nonce.toString(),
-                permit2Deadline: permit2Data.permit2Deadline.toString(),
-                permit2Signature: permit2Data.permit2Signature
+                // No Permit2 needed for withdraw
+                permit2Nonce: '0',
+                permit2Deadline: '0',
+                permit2Signature: '0x'
             };
 
-            // Step 4: Calculate new state
+            // Step 3: Calculate new state
             setProcessingStep('Calculating new state...');
-            console.log('🔐 Step 4: Calculating new state...');
+            console.log('🔐 Step 3: Calculating new state...');
             const { newState, operations } = await calculateNewState(
                 oldState,
                 action,
                 profile.nonce || 0
             );
 
-            // Step 5: Generate proof
+            // Step 4: Generate proof
             setProcessingStep('Generating proof (this may take a moment)...');
-            console.log('🔐 Step 5: Generating wallet update proof...');
+            console.log('🔐 Step 4: Generating wallet update proof...');
 
             const proofData = await generateWalletUpdateProofClient({
                 oldNonce: profile.nonce?.toString() || '0',
@@ -222,16 +207,16 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
 
             console.log('✅ Proof generated successfully:', proofData);
 
-            // Step 6: Sign newCommitment
+            // Step 5: Sign newCommitment
             setProcessingStep('Signing commitment...');
-            console.log('🔍 Step 6: Signing newCommitment...');
+            console.log('🔍 Step 5: Signing newCommitment...');
             const newCommitment = proofData.publicInputs.new_wallet_commitment;
             const rootSignature = await signMessageWithSkRoot(newCommitment);
             console.log('✅ Signature created!');
 
-            // Step 7: Verify proof
+            // Step 6: Verify proof
             setProcessingStep('Verifying proof...');
-            console.log('🔍 Step 7: Verifying proof...');
+            console.log('🔍 Step 6: Verifying proof...');
             if (operations.transfer) {
                 operations.transfer.amount = amount
             }
@@ -247,7 +232,7 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
                 console.log('✅ Withdraw completed successfully!', verifyResult);
                 setProcessingStep('Withdraw completed!');
                 if (verifyResult.verified) {
-                    toast.success(`Withdraw verified successfully!\nAmount: ${amount} ${selectedToken.symbol}`, {
+                    toast.success('Your withdrawal is queued, please allow a few minutes for it to sync', {
                         duration: 5000,
                     });
                     // ✅ Call callback để refetch transfer history
@@ -269,7 +254,7 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
             handleClose();
         } catch (error) {
             console.error('❌ Error in withdraw process:', error);
-            toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
+            toast.error(getErrorMessage(error));
             setIsProcessing(false);
             setProcessingStep('');
         }
@@ -302,12 +287,13 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
 
                 // ✅ Check if amount exceeds DarkPool balance
                 const enteredAmount = parseFloat(amount);
-                const availableBalance = parseFloat(darkpoolBalances[selectedToken?.index || 0] || '0');
+                const balanceScaled = darkpoolBalances[selectedToken?.index || 0] || '0';
+                const availableBalance = parseFloat(intToDecimal(balanceScaled, BALANCE_PERCISION));
 
                 if (enteredAmount > availableBalance) {
                     return {
                         canProceed: false,
-                        errorMessage: `Insufficient DarkPool balance. You have ${availableBalance} ${selectedToken?.symbol}`
+                        errorMessage: `Insufficient DarkPool balance. You have ${availableBalance.toFixed(4)} ${selectedToken?.symbol}`
                     };
                 }
 
@@ -375,7 +361,8 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
                                             <div className="max-h-[300px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-red-500/50 scrollbar-track-gray-800/50 hover:scrollbar-thumb-red-500/70 scroll-smooth">
                                                 <div className="grid gap-2.5">
                                                     {tokens.map((token) => {
-                                                        const balance = parseFloat(darkpoolBalances[token.index] || '0');
+                                                        const balanceScaled = darkpoolBalances[token.index] || '0';
+                                                        const balance = parseFloat(intToDecimal(balanceScaled, BALANCE_PERCISION));
                                                         return (
                                                             <button
                                                                 key={token.symbol}
@@ -401,7 +388,7 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
                                                                 <div className="text-right">
                                                                     <div className="text-gray-500 text-xs mb-0.5">DarkPool Balance</div>
                                                                     <div className={`font-medium text-xs ${balance > 0 ? 'text-white/90' : 'text-gray-600'}`}>
-                                                                        {balance.toFixed(2)}
+                                                                        {intToDecimal(balanceScaled, BALANCE_PERCISION)}
                                                                     </div>
                                                                 </div>
                                                             </button>
@@ -455,9 +442,9 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
                                                 </label>
                                                 <div className="relative">
                                                     <input
-                                                        type="number"
+                                                        type="text"
                                                         value={amount}
-                                                        onChange={(e) => setAmount(e.target.value)}
+                                                        onChange={(e) => setAmount(limitDecimalPlaces(e.target.value))}
                                                         placeholder="0.00"
                                                         className="w-full px-3 py-2.5 pr-16 bg-gray-800/50 border border-gray-700/70 rounded-lg text-white text-sm focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
                                                     />
@@ -467,7 +454,7 @@ const WithdrawModal = ({ isOpen, onClose, onWithdrawSuccess }: WithdrawModalProp
                                                 </div>
                                                 <div className="mt-2 text-xs text-gray-500">
                                                     Available in DarkPool: <span className="text-gray-400 font-medium">
-                                                        {parseFloat(darkpoolBalances[selectedToken.index] || '0').toFixed(2)} {selectedToken.symbol}
+                                                        {intToDecimal(darkpoolBalances[selectedToken.index] || '0', BALANCE_PERCISION)} {selectedToken.symbol}
                                                     </span>
                                                 </div>
                                             </div>

@@ -18,7 +18,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import toast from 'react-hot-toast';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
-import { intToDecimal, scaleToInt } from '@/lib/services';
+import { intToDecimal, scaleToInt, limitDecimalPlaces, getErrorMessage } from '@/lib/services';
 import { BALANCE_PERCISION, PERCISION } from '@/lib/constants';
 
 interface SidebarProps {
@@ -154,20 +154,20 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             const profileData = await fetchProfile(walletId);
             console.log('✅ Profile loaded and stored:', profileData);
 
-            // Check if account is locked
-            if (profileData && profileData.is_locked) {
+            // Check if system is syncing
+            if (profileData.sync === false) {
                 toast('System is synchronizing, please try again in a few minutes', {
-                    icon: '⚠️',
+                    icon: '⏳',
                     duration: 4000,
                     style: {
                         borderRadius: '12px',
                         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
                         color: '#fff',
-                        border: '1px solid rgba(251, 191, 36, 0.5)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
                         padding: '16px 20px',
                         fontSize: '14px',
                         fontWeight: '500',
-                        boxShadow: '0 10px 40px rgba(251, 191, 36, 0.15), 0 0 0 1px rgba(251, 191, 36, 0.1)',
+                        boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)',
                     },
                 });
                 setIsProcessing(false);
@@ -252,13 +252,6 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 profileData.nonce || 0
             );
 
-            console.log('✅ New state calculated:', {
-                availableBalances: newState.available_balances.slice(0, 3),
-                reservedBalances: newState.reserved_balances.slice(0, 3),
-                activeOrders: newState.orders_list.filter(o => o !== null),
-                operations
-            });
-
             // Generate proof
             setProcessingStep('Generating proof (this may take a moment)...');
             console.log('🔐 Step 4: Generating wallet update proof...', newState);
@@ -273,7 +266,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 operations
             });
             if(!proofData.publicInputs) {
-                toast.error('Something went wrong');
+                toast.error('Failed to generate proof');
                 setIsProcessing(false);
                 return;
             }
@@ -299,7 +292,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             });
             console.log(submitResult.success, 'submitResult1')
             if (submitResult.success) {
-                toast.success('Please allow a few minutes for the system to sync');
+                toast.success('Your order is queued, please allow a few minutes for it to sync');
             } else {
                 console.error('❌ Step 7: Order submission failed:', submitResult.error);
                 toast.error(`Order submission failed: ${submitResult.error}`);
@@ -310,7 +303,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
 
         } catch (error) {
             console.error('❌ Error creating order:', error);
-            toast.error('Something went wrong');
+            toast.error(getErrorMessage(error));
             setIsProcessing(false);
         }
     };
@@ -327,15 +320,21 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
         const baseBalanceScaled = scaleToInt(baseBalance.available, BALANCE_PERCISION);
         const quoteBalanceScaled = scaleToInt(quoteBalance.available, BALANCE_PERCISION);
         const amount = parseFloat(orderInput.amount || '0');
-        const price = parseFloat(orderInput.limitPrice || '1');
-        const orderQtyScaled = scaleToInt(orderInput.amount, PERCISION);
-        const orderPriceScaled = scaleToInt(String(price), PERCISION);
+        const price = parseFloat(orderInput.limitPrice || '0');
+        const orderQtyScaled = scaleToInt(orderInput.amount || '0', PERCISION);
+        const orderPriceScaled = scaleToInt(orderInput.limitPrice || '0', PERCISION);
+
         // Skip validation if amount is 0 or empty
         if (!orderInput.amount || amount <= 0) {
             return { isValid: true, error: null };
         }
 
         if (orderInput.side === 'buy') {
+            // BUY: Skip validation if price is not entered yet
+            if (!orderInput.limitPrice || price <= 0) {
+                return { isValid: true, error: null };
+            }
+
             // BUY: Need amount * price in quote token (USDC)
             const requiredQuote = Number(orderPriceScaled) * Number(orderQtyScaled);
             const availableQuote = Number(quoteBalanceScaled || '0');
@@ -443,7 +442,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                                 type="text"
                                 placeholder="0.00"
                                 value={orderInput.amount}
-                                onChange={(e) => updateAmount(e.target.value)}
+                                onChange={(e) => updateAmount(limitDecimalPlaces(e.target.value))}
                                 className={`bg-transparent flex-1 outline-none ${
                                     !amountValidation.isValid ? 'text-red-400' : 'text-white'
                                 }`}
@@ -474,7 +473,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                                 type="text"
                                 placeholder="0.00"
                                 value={orderInput.limitPrice || ''}
-                                onChange={(e) => updatePrice(e.target.value)}
+                                onChange={(e) => updatePrice(limitDecimalPlaces(e.target.value))}
                                 className="bg-transparent flex-1 outline-none text-white"
                             />
                             <span className="text-gray-400 text-sm ml-2">{pair.quote}</span>
