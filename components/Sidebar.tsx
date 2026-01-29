@@ -155,7 +155,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             console.log('✅ Profile loaded and stored:', profileData);
 
             // Check if system is syncing
-            if (profileData.sync === false) {
+            if (profileData && (profileData.is_locked || !profileData.sync)) {
                 toast('System is synchronizing, please try again in a few minutes', {
                     icon: '⏳',
                     duration: 4000,
