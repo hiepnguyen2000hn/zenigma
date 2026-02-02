@@ -12,11 +12,13 @@ import { useUserBalance } from '@/hooks/useUserBalance';
 import { useZenigmaAddress } from '@/hooks/useWalletKeys';
 import { connectSSE, disconnectSSE } from '@/lib/sse.client';
 import Header from './Header';
+import Pagination from './Pagination';
 import WithdrawModal from './WithdrawModal';
 import DepositModal from './DepositModal';
 import DateTimeRangePicker from './DateTimeRangePicker';
 import { useTokens } from '@/hooks/useTokens';
 import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
+import { DEFAULT_PAGINATION } from '@/lib/constants';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import toast from 'react-hot-toast';
 
@@ -91,6 +93,7 @@ const MyAssets = () => {
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [totalTransfers, setTotalTransfers] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
@@ -109,8 +112,8 @@ const MyAssets = () => {
 
   // Filter state
   const [filters, setFiltersState] = useState<TransferFilters>({
-    page: 1,
-    limit: 20,
+    page: DEFAULT_PAGINATION.PAGE,
+    limit: DEFAULT_PAGINATION.LIMIT,
   });
 
   // Date range state
@@ -129,8 +132,8 @@ const MyAssets = () => {
   // Clear all filters
   const clearFilters = () => {
     setFiltersState({
-      page: 1,
-      limit: 20,
+      page: DEFAULT_PAGINATION.PAGE,
+      limit: DEFAULT_PAGINATION.LIMIT,
     });
     setStartDate(null);
     setEndDate(null);
@@ -329,9 +332,9 @@ const MyAssets = () => {
         // Step 3: Fetch transfers
         console.log('🔄 [MyAssets] Fetching transfers...');
         const transferResponse = await getTransferHistory(walletId, filters);
-
         if (isCancelled) return;
         setTransfers(transferResponse.data || []);
+        setTotalTransfers(transferResponse.total ? transferResponse.total : 0);
       } catch (err) {
         console.error('❌ [MyAssets] Failed to fetch data:', err);
         if (!isCancelled) {
@@ -828,6 +831,20 @@ const MyAssets = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination for Transfer History */}
+          {zenigmaAddress && !loading && transfers.length > 0 && (
+            <Pagination
+              currentPage={filters.page || DEFAULT_PAGINATION.PAGE}
+              totalPages={Math.ceil(totalTransfers / (filters.limit || DEFAULT_PAGINATION.LIMIT))}
+              totalItems={totalTransfers}
+              pageSize={filters.limit || DEFAULT_PAGINATION.LIMIT}
+              onPageChange={(page) => setFiltersState((prev) => ({ ...prev, page }))}
+              onPageSizeChange={(limit) => setFiltersState((prev) => ({ ...prev, limit, page: DEFAULT_PAGINATION.PAGE }))}
+              showPageSizeSelector
+              pageSizeOptions={[5, 10, 20, 50]}
+            />
+          )}
         </div>
       </div>
 
