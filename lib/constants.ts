@@ -23,6 +23,11 @@ export const MOCK_USDT_ADDRESS = process.env.NEXT_PUBLIC_MOCK_USDT_ADDRESS as `0
 export const PERCISION = 10000;
 
 export const BALANCE_PERCISION = PERCISION * PERCISION;
+
+export const DEFAULT_PAGINATION = {
+  PAGE: 1,
+  LIMIT: 5
+}
 // ============================================
 // ERC20 TOKEN CONFIGURATION
 // ============================================

@@ -126,7 +126,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
         }
 
         // ✅ Check if amount is empty or zero
-        if (!orderInput.amount || parseFloat(orderInput.amount) <= 0) {
+        if (!orderInput.amount || parseFloat(orderInput.amount) <= 0 || !orderInput.limitPrice || parseFloat(orderInput.limitPrice) <= 0) {
             toast.error('Please enter a valid amount');
             return;
         }

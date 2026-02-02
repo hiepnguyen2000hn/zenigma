@@ -23,6 +23,9 @@ export interface Order {
 
 export interface OrderListResponse {
   data: Order[];
+  total?: number;
+  page?: number;
+  limit?: number;
 }
 
 export interface MatchingHistory {
@@ -40,6 +43,9 @@ export interface MatchingHistory {
 
 export interface MatchingHistoryResponse {
   data: MatchingHistory[];
+  total?: number;
+  page?: number;
+  limit?: number;
 }
 
 export interface Transfer {
@@ -54,6 +60,9 @@ export interface Transfer {
 
 export interface TransferHistoryResponse {
   data: Transfer[];
+  total?: number;
+  page?: number;
+  limit?: number;
 }
 
 export interface TokenBalanceItem {

@@ -16,9 +16,11 @@ import toast from 'react-hot-toast';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
 import Header from './Header';
+import Pagination from './Pagination';
 import { useTokens } from '@/hooks/useTokens';
 import DateTimeRangePicker from './DateTimeRangePicker';
 import * as Tabs from '@radix-ui/react-tabs';
+import { DEFAULT_PAGINATION } from '@/lib/constants';
 
 // Order status mapping (from API string to UI display)
 const ORDER_STATUS = {
@@ -58,6 +60,10 @@ const MyOrders = () => {
   const [cancellingOrders, setCancellingOrders] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState('open');
 
+  // Pagination state
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalHistoryOrders, setTotalHistoryOrders] = useState(0);
+
   // Dropdown refs
   const statusDropdownRef = useRef<HTMLDivElement>(null);
   const sideDropdownRef = useRef<HTMLDivElement>(null);
@@ -70,8 +76,8 @@ const MyOrders = () => {
   // Filter state for Open Orders
   const [filters, setFiltersState] = useState<OrderFilters>({
     status: ['Created', 'Pending', 'SettlingMatch', 'Filled', 'Cancelled'],
-    page: 1,
-    limit: 10,
+    page: DEFAULT_PAGINATION.PAGE,
+    limit: DEFAULT_PAGINATION.LIMIT,
   });
 
   // Filter state for History Orders (uses timestamps in milliseconds)
@@ -81,8 +87,8 @@ const MyOrders = () => {
     from_date?: number;
     to_date?: number;
   }>({
-    page: 1,
-    limit: 20,
+    page: DEFAULT_PAGINATION.PAGE,
+    limit: DEFAULT_PAGINATION.LIMIT,
   });
 
   const [showFilters, setShowFilters] = useState({
@@ -152,8 +158,8 @@ const MyOrders = () => {
   const clearFilters = () => {
     setFiltersState({
       status: ['Created', 'Pending', 'SettlingMatch'],
-      page: 1,
-      limit: 20,
+      page: DEFAULT_PAGINATION.PAGE,
+      limit: DEFAULT_PAGINATION.LIMIT,
     });
     setStartDate(null);
     setEndDate(null);
@@ -162,8 +168,8 @@ const MyOrders = () => {
   // Clear history filters
   const clearHistoryFilters = () => {
     setHistoryFiltersState({
-      page: 1,
-      limit: 20,
+      page: DEFAULT_PAGINATION.PAGE,
+      limit: DEFAULT_PAGINATION.LIMIT,
     });
     setHistoryStartDate(null);
     setHistoryEndDate(null);
@@ -328,6 +334,7 @@ const MyOrders = () => {
   useEffect(() => {
     if (!authenticated || !user?.id || !zenigmaAddress) {
       setOrders([]);
+      setTotalOrders(0);
       return;
     }
 
@@ -338,8 +345,10 @@ const MyOrders = () => {
         const walletId = extractPrivyWalletId(user.id);
         console.log('🔍 [MyOrders] Fetching open orders with filters:', filters);
         const response = await getOrderList(walletId, filters);
-        console.log('✅ [MyOrders] Open orders fetched:', response.data?.length || 0, 'orders');
+        console.log('✅ [MyOrders] Open orders fetched:', response.total || 0, 'orders');
         setOrders(response.data || []);
+        // Set total from API response if available, otherwise use data length
+        setTotalOrders(response.total ? response.total : 0);
       } catch (err) {
         console.error('❌ [MyOrders] Failed to fetch open orders:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch orders');
@@ -355,6 +364,7 @@ const MyOrders = () => {
   useEffect(() => {
     if (!authenticated || !user?.id || !zenigmaAddress) {
       setHistoryOrders([]);
+      setTotalHistoryOrders(0);
       return;
     }
 
@@ -367,6 +377,8 @@ const MyOrders = () => {
         const response = await getMatchingHistory(walletId, historyFilters);
         console.log('✅ [MyOrders] Matching history fetched:', response.data?.length || 0, 'records');
         setHistoryOrders(response.data || []);
+        // Set total from API response if available, otherwise use data length
+        setTotalHistoryOrders(response.total ? response.total : 0);
       } catch (err) {
         console.error('❌ [MyOrders] Failed to fetch matching history:', err);
         setHistoryError(err instanceof Error ? err.message : 'Failed to fetch history');
@@ -601,7 +613,6 @@ const MyOrders = () => {
                 )}
               </div>
 
-              {/* DateTime Range Picker */}
               <DateTimeRangePicker
                 startDate={startDate}
                 endDate={endDate}
@@ -623,15 +634,6 @@ const MyOrders = () => {
               </button>
             </div>
 
-            {/* Cancel Selected Button */}
-            {/*{selectedOrders.size > 0 && (*/}
-            {/*  <button*/}
-            {/*    onClick={handleCancelSelectedOrders}*/}
-            {/*    className="px-4 py-2 bg-red-600/20 border border-red-600/50 rounded-lg text-sm text-red-500 hover:bg-red-600/30 transition-colors"*/}
-            {/*  >*/}
-            {/*    Cancel {selectedOrders.size} {selectedOrders.size === 1 ? 'order' : 'orders'}*/}
-            {/*  </button>*/}
-            {/*)}*/}
           </div>
         </div>
 
@@ -766,7 +768,7 @@ const MyOrders = () => {
                           ${order.order_value?.toFixed(2) || '0.00'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
-                          {order.filled}
+                          {order.filled.toFixed(2) || '0.00'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-400">
                           {orderTime}
@@ -778,6 +780,20 @@ const MyOrders = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination for Open Orders */}
+          {zenigmaAddress && !loading && orders.length > 0 && (
+            <Pagination
+              currentPage={filters.page || DEFAULT_PAGINATION.PAGE}
+              totalPages={Math.ceil(totalOrders / (filters.limit || DEFAULT_PAGINATION.LIMIT))}
+              totalItems={totalOrders}
+              pageSize={filters.limit || DEFAULT_PAGINATION.LIMIT}
+              onPageChange={(page) => setFiltersState((prev) => ({ ...prev, page }))}
+              onPageSizeChange={(limit) => setFiltersState((prev) => ({ ...prev, limit, page: DEFAULT_PAGINATION.PAGE }))}
+              showPageSizeSelector
+              pageSizeOptions={[5, 10, 20, 50]}
+            />
+          )}
         </div>
           </Tabs.Content>
 
@@ -932,6 +948,20 @@ const MyOrders = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination for Trading History */}
+              {zenigmaAddress && !historyLoading && historyOrders.length > 0 && (
+                <Pagination
+                  currentPage={historyFilters.page || DEFAULT_PAGINATION.PAGE}
+                  totalPages={Math.ceil(totalHistoryOrders / (historyFilters.limit || DEFAULT_PAGINATION.LIMIT))}
+                  totalItems={totalHistoryOrders}
+                  pageSize={historyFilters.limit || DEFAULT_PAGINATION.LIMIT}
+                  onPageChange={(page) => setHistoryFiltersState((prev) => ({ ...prev, page }))}
+                  onPageSizeChange={(limit) => setHistoryFiltersState((prev) => ({ ...prev, limit, page: DEFAULT_PAGINATION.PAGE }))}
+                  showPageSizeSelector
+                  pageSizeOptions={[5, 10, 20, 50]}
+                />
+              )}
             </div>
           </Tabs.Content>
         </Tabs.Root>
