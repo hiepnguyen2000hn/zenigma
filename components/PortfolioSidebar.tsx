@@ -309,38 +309,36 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                     )}
                                 </div>
                             </Popover.Trigger>
-                            <Popover.Portal>
-                                <Popover.Content
-                                    side="left"
-                                    sideOffset={8}
-                                    className="w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-[9999] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
-                                >
-                                    {zenigmaAddress && user?.id && (
-                                        <>
-                                            {/* Wallet ID */}
-                                            <div className="p-3 border-b border-gray-800">
-                                                <div className="text-gray-400 text-xs font-mono break-all">
-                                                    {extractPrivyWalletId(user.id)}
-                                                </div>
+                            {zenigmaAddress && user?.id && (
+                                <Popover.Portal>
+                                    <Popover.Content
+                                        side="left"
+                                        sideOffset={8}
+                                        className="w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-[9999] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
+                                    >
+                                        {/* Wallet ID */}
+                                        <div className="p-3 border-b border-gray-800">
+                                            <div className="text-gray-400 text-xs font-mono break-all">
+                                                {extractPrivyWalletId(user.id)}
                                             </div>
+                                        </div>
 
-                                            {/* Actions */}
-                                            <div className="py-1">
-                                                <Popover.Close asChild>
-                                                    <button
-                                                        onClick={handleZenigmaDisconnect}
-                                                        className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-red-900/20 hover:text-red-400 transition-colors outline-none"
-                                                    >
-                                                        <X size={16} className="text-gray-400" />
-                                                        <span className="text-white text-sm">Disconnect</span>
-                                                    </button>
-                                                </Popover.Close>
-                                            </div>
-                                        </>
-                                    )}
-                                    <Popover.Arrow className="fill-gray-700" />
-                                </Popover.Content>
-                            </Popover.Portal>
+                                        {/* Actions */}
+                                        <div className="py-1">
+                                            <Popover.Close asChild>
+                                                <button
+                                                    onClick={handleZenigmaDisconnect}
+                                                    className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-red-900/20 hover:text-red-400 transition-colors outline-none"
+                                                >
+                                                    <X size={16} className="text-gray-400" />
+                                                    <span className="text-white text-sm">Disconnect</span>
+                                                </button>
+                                            </Popover.Close>
+                                        </div>
+                                        <Popover.Arrow className="fill-gray-700" />
+                                    </Popover.Content>
+                                </Popover.Portal>
+                            )}
                         </Popover.Root>
 
                         {/* Sepolia Wallet Card */}
@@ -458,8 +456,8 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                         </div>
                     </motion.div>
 
-                    {/* Token List - No Scroll */}
-                    <div className="flex-1 overflow-hidden">
+                    {/* Token List */}
+                    <div className="flex-1 overflow-y-auto">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: isOpen ? 1 : 0 }}
