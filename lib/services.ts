@@ -368,9 +368,20 @@ export function intToDecimal(value: string, precision: number): string {
 export function limitDecimalPlaces(value: string, maxDecimals: number = 4): string {
   if (!value) return value;
 
-  const parts = value.split('.');
+  // Remove all characters except digits and decimal point
+  let sanitized = value.replace(/[^0-9.]/g, '');
 
-  if (parts.length === 1) return value;
+  // Ensure only one decimal point
+  const decimalCount = (sanitized.match(/\./g) || []).length;
+  if (decimalCount > 1) {
+    // Keep only the first decimal point
+    const firstDotIndex = sanitized.indexOf('.');
+    sanitized = sanitized.slice(0, firstDotIndex + 1) + sanitized.slice(firstDotIndex + 1).replace(/\./g, '');
+  }
+
+  const parts = sanitized.split('.');
+
+  if (parts.length === 1) return sanitized;
 
   const integerPart = parts[0];
   const decimalPart = parts[1].slice(0, maxDecimals);

@@ -9,6 +9,7 @@ import { getTransferHistory, type Transfer } from '@/lib/services';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useUserBalance } from '@/hooks/useUserBalance';
+import { useZenigmaAddress } from '@/hooks/useWalletKeys';
 import { connectSSE, disconnectSSE } from '@/lib/sse.client';
 import Header from './Header';
 import WithdrawModal from './WithdrawModal';
@@ -76,6 +77,7 @@ const MyAssets = () => {
   const { tokens, isLoading: isLoadingTokens, isLoaded: isTokensLoaded } = useTokens();
   const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
   const { balance: userBalance, loading: balanceLoading, fetchBalance } = useUserBalance();
+  const zenigmaAddress = useZenigmaAddress();
 
   // Filter tokens with valid contract addresses for balance reading
   // Only USDC, WETH, USDT (real addresses) will be queried
@@ -428,10 +430,10 @@ const MyAssets = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-black divide-y divide-gray-800">
-                  {!authenticated ? (
+                  {!zenigmaAddress ? (
                     <tr>
                       <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
-                        Sign in to view your assets.
+                        Sign in to Zenigma to view your assets.
                       </td>
                     </tr>
                   ) : (loading || isLoadingTokens || profileLoading || balanceLoading || isLoadingWalletBalances) && assets.length === 0 ? (
@@ -543,8 +545,20 @@ const MyAssets = () => {
                     : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                 }`}
               >
-                <Circle className={`w-3 h-3 ${filters.status && filters.status.length > 0 ? 'text-green-500 fill-green-500' : ''}`} />
-                <span>Status</span>
+                <Circle className={`w-3 h-3 ${
+                  filters.status?.[0] === 'pending' ? 'text-yellow-500 fill-yellow-500' :
+                  filters.status?.[0] === 'completed' ? 'text-green-500 fill-green-500' :
+                  filters.status?.[0] === 'failed' ? 'text-red-500 fill-red-500' : ''
+                }`} />
+                <span className={
+                  filters.status?.[0] === 'pending' ? 'text-yellow-500' :
+                  filters.status?.[0] === 'completed' ? 'text-green-500' :
+                  filters.status?.[0] === 'failed' ? 'text-red-500' : ''
+                }>
+                  {filters.status?.[0] === 'pending' ? 'Pending' :
+                   filters.status?.[0] === 'completed' ? 'Completed' :
+                   filters.status?.[0] === 'failed' ? 'Failed' : 'Status'}
+                </span>
                 <ChevronDown size={16} className={`transition-transform ${showFilters.status ? 'rotate-180' : ''}`} />
               </button>
 
@@ -594,13 +608,31 @@ const MyAssets = () => {
                     : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                 }`}
               >
-                <Circle className={`w-3 h-3 ${filters.direction && filters.direction.length > 0 ? 'text-blue-500 fill-blue-500' : ''}`} />
-                <span>Type</span>
+                <Circle className={`w-3 h-3 ${
+                  filters.direction?.[0] === '0' ? 'text-green-500 fill-green-500' :
+                  filters.direction?.[0] === '1' ? 'text-red-500 fill-red-500' : ''
+                }`} />
+                <span className={
+                  filters.direction?.[0] === '0' ? 'text-green-500' :
+                  filters.direction?.[0] === '1' ? 'text-red-500' : ''
+                }>
+                  {filters.direction?.[0] === '0' ? 'Deposit' :
+                   filters.direction?.[0] === '1' ? 'Withdraw' : 'Type'}
+                </span>
                 <ChevronDown size={16} className={`transition-transform ${showFilters.direction ? 'rotate-180' : ''}`} />
               </button>
 
               {showFilters.direction && (
                 <div className="absolute top-full mt-1 left-0 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50 min-w-[120px]">
+                  <button
+                    onClick={() => {
+                      setFilter({ direction: ['0'] });
+                      setShowFilters({ ...showFilters, direction: false });
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-green-500 hover:bg-gray-800 transition-colors"
+                  >
+                    Deposit
+                  </button>
                   <button
                     onClick={() => {
                       setFilter({ direction: ['1'] });
@@ -624,8 +656,16 @@ const MyAssets = () => {
                     : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                 }`}
               >
-                <Circle className={`w-3 h-3 ${filters.token !== undefined ? 'text-purple-500 fill-purple-500' : ''}`} />
-                <span>Token</span>
+                {filters.token !== undefined ? (
+                  <TokenIconBySymbol symbol={tokens.find(t => t.index === filters.token)?.symbol || ''} size="sm" />
+                ) : (
+                  <Circle className="w-3 h-3" />
+                )}
+                <span>
+                  {filters.token !== undefined
+                    ? tokens.find(t => t.index === filters.token)?.symbol || 'Token'
+                    : 'Token'}
+                </span>
                 <ChevronDown size={16} className={`transition-transform ${showFilters.token ? 'rotate-180' : ''}`} />
               </button>
 
@@ -700,10 +740,10 @@ const MyAssets = () => {
                 </tr>
               </thead>
               <tbody className="bg-black divide-y divide-gray-800">
-                {!authenticated ? (
+                {!zenigmaAddress ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-gray-400">
-                      Sign in to view your transfer history.
+                      Sign in to Zenigma to view your transfer history.
                     </td>
                   </tr>
                 ) : (loading || profileLoading) && transfers.length === 0 ? (

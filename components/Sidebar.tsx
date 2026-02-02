@@ -9,7 +9,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useAtomValue, useSetAtom } from 'jotai';
 import { orderInputAtom, toggleOrderSideAtom, tradingPairAtom, updateOrderAmountAtom, updateLimitPriceAtom } from '@/store/trading';
 import { tokensAtom } from '@/store/tokens';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import {getAllKeys, signMessageWithSkRoot} from '@/lib/ethers-signer';
@@ -37,7 +37,6 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const toggleSide = useSetAtom(toggleOrderSideAtom);
     const updateAmount = useSetAtom(updateOrderAmountAtom);
     const updatePrice = useSetAtom(updateLimitPriceAtom);
-    const [selectedToken, setSelectedToken] = useState('USDC');
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingStep, setProcessingStep] = useState('');
@@ -45,6 +44,23 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
     const { profile, fetchProfile } = useUserProfile();
     const keys = getAllKeys()
+
+    // ✅ Reset amount and price when wallet disconnects
+    useEffect(() => {
+        if (!authenticated) {
+            updateAmount('');
+            updatePrice('');
+        }
+    }, [authenticated, updateAmount, updatePrice]);
+
+    // ✅ Reset amount and price when leaving the page (component unmount)
+    useEffect(() => {
+        return () => {
+            updateAmount('');
+            updatePrice('');
+        };
+    }, [updateAmount, updatePrice]);
+
     /**
      * Handle wallet initialization and refresh profile after
      */
@@ -72,7 +88,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
      * ✅ Get balance for a token by symbol from profile
      * Only use profile.balances array, return 0 if not found
      */
-    const getTokenBalance = (symbol: string): { pnpmavailable: string; reserved: string; total: string } => {
+    const getTokenBalance = (symbol: string): { available: string; reserved: string; total: string } => {
 
         // ✅ Return 0 if no profile or no balances array
         if (!profile || !profile.balances) {
@@ -293,6 +309,9 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             console.log(submitResult.success, 'submitResult1')
             if (submitResult.success) {
                 toast.success('Your order is queued, please allow a few minutes for it to sync');
+                // ✅ Reset amount and price after successful order
+                updateAmount('');
+                updatePrice('');
             } else {
                 console.error('❌ Step 7: Order submission failed:', submitResult.error);
                 toast.error(`Order submission failed: ${submitResult.error}`);
@@ -342,7 +361,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             if (requiredQuote > availableQuote) {
                 return {
                     isValid: false,
-                    error: `Insufficient ${quoteSymbol}. Need ${intToDecimal(String(requiredQuote), BALANCE_PERCISION)}, have ${intToDecimal(String(availableQuote), BALANCE_PERCISION)}`
+                    error: `Insufficient ${quoteSymbol}`
                 };
             }
         } else {
@@ -352,7 +371,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             if (Number(scaleToInt(String(amount), PERCISION)) > availableBase) {
                 return {
                     isValid: false,
-                    error: `Insufficient ${baseSymbol}. Need ${intToDecimal(String(amount), PERCISION)}, have ${intToDecimal(String(availableBase), BALANCE_PERCISION)}`
+                    error: `Insufficient ${baseSymbol}`
                 };
             }
         }
@@ -424,8 +443,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                     </button>
 
                     <TokenSelector
-                        selectedToken={selectedToken}
-                        onSelectToken={setSelectedToken}
+                        selectedToken={pair.base}
+                        onSelectToken={() => {}} // TokenSelector handles URL update internally
                     />
                 </div>
 
@@ -448,7 +467,6 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                                 }`}
                             />
                             <span className="text-white font-medium ml-2">{pair.base}</span>
-                            <ArrowLeftRight className="w-4 h-4 text-gray-400 ml-2" />
                         </div>
 
                         {/* Error Message */}
@@ -458,10 +476,100 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                             </p>
                         )}
 
+                        {/* Percentage buttons */}
                         <div className="flex items-center justify-between mt-2 px-1">
-                            <button className="text-xs text-gray-400 hover:text-white">25%</button>
-                            <button className="text-xs text-gray-400 hover:text-white">50%</button>
-                            <button className="text-xs text-gray-400 hover:text-white">MAX</button>
+                            {orderInput.side === 'sell' ? (
+                                <>
+                                    {}
+                                    <button
+                                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                                        onClick={() => {
+                                            const available = parseFloat(baseBalance.available) || 0;
+                                            const amount = (available * 0.25).toFixed(4);
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        25%
+                                    </button>
+                                    <button
+                                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                                        onClick={() => {
+                                            const available = parseFloat(baseBalance.available) || 0;
+                                            const amount = (available * 0.5).toFixed(4);
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        50%
+                                    </button>
+                                    <button
+                                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                                        onClick={() => {
+                                            const available = parseFloat(baseBalance.available) || 0;
+                                            updateAmount(available.toFixed(4));
+                                        }}
+                                    >
+                                        MAX
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    {}
+                                    <button
+                                        className={`text-xs transition-colors ${
+                                            !orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0
+                                                ? 'text-gray-600 cursor-not-allowed'
+                                                : 'text-gray-400 hover:text-white'
+                                        }`}
+                                        disabled={!orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0}
+                                        onClick={() => {
+                                            const price = parseFloat(orderInput.limitPrice || '0') || 0;
+                                            if (price <= 0) return;
+                                            const available = parseFloat(quoteBalance.available) || 0;
+                                            const rawAmount = (available * 0.25) / price;
+                                            const amount = (Math.floor(rawAmount * 10000) / 10000).toString();
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        25%
+                                    </button>
+                                    <button
+                                        className={`text-xs transition-colors ${
+                                            !orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0
+                                                ? 'text-gray-600 cursor-not-allowed'
+                                                : 'text-gray-400 hover:text-white'
+                                        }`}
+                                        disabled={!orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0}
+                                        onClick={() => {
+                                            const price = parseFloat(orderInput.limitPrice || '0') || 0;
+                                            if (price <= 0) return;
+                                            const available = parseFloat(quoteBalance.available) || 0;
+                                            const rawAmount = (available * 0.5) / price;
+                                            const amount = (Math.floor(rawAmount * 10000) / 10000).toString();
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        50%
+                                    </button>
+                                    <button
+                                        className={`text-xs transition-colors ${
+                                            !orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0
+                                                ? 'text-gray-600 cursor-not-allowed'
+                                                : 'text-gray-400 hover:text-white'
+                                        }`}
+                                        disabled={!orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0}
+                                        onClick={() => {
+                                            const price = parseFloat(orderInput.limitPrice || '0') || 0;
+                                            if (price <= 0) return;
+                                            const available = parseFloat(quoteBalance.available) || 0;
+                                            const rawAmount = available / price;
+                                            const amount = (Math.floor(rawAmount * 10000) / 10000).toString();
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        MAX
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
 

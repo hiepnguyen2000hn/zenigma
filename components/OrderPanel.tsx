@@ -13,7 +13,7 @@ import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
 import toast from 'react-hot-toast';
 import { useTokens } from '@/hooks/useTokens';
-import { useUserProfile } from '@/hooks/useUserProfile';
+import { useZenigmaAddress } from '@/hooks/useWalletKeys';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
 
@@ -51,7 +51,7 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
     const { switchChainAsync } = useSwitchChain();
     const { getSymbol } = useTokenMapping();
     const { tokens } = useTokens();
-    const { profile } = useUserProfile();
+    const zenigmaAddress = useZenigmaAddress();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -267,15 +267,9 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
         }
     };
 
-    // Fetch orders on mount + setup interval (depends on auth/profile only)
+    // Fetch orders on mount + setup interval (only when Zenigma is connected)
     useEffect(() => {
-        if (!authenticated || !user?.id) {
-            setOrders([]);
-            return;
-        }
-
-        if (!profile?.is_initialized) {
-            console.log('⏳ [OrderPanel] Profile not initialized, skipping order fetch');
+        if (!authenticated || !user?.id || !zenigmaAddress) {
             setOrders([]);
             return;
         }
@@ -310,11 +304,11 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
         // const intervalId = setInterval(() => fetchOrders(false), 5000);
 
 
-    }, [authenticated, user?.id, profile?.is_initialized]);
+    }, [authenticated, user?.id, zenigmaAddress, filters]);
 
     // Refetch immediately when filters change
     useEffect(() => {
-        if (!authenticated || !user?.id || !profile?.is_initialized) return;
+        if (!authenticated || !user?.id || !zenigmaAddress) return;
 
         const walletId = extractPrivyWalletId(user.id);
         console.log('🔄 [OrderPanel] Filters changed, refetching:', filters);
@@ -322,11 +316,11 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
         getOrderList(walletId, filters)
             .then(response => setOrders(response.data || []))
             .catch(err => console.error('Filter refetch failed:', err));
-    }, [filters]);
+    }, [filters, authenticated, user?.id, zenigmaAddress]);
 
     // Refetch when refetchTrigger changes (triggered by SSE order:status event)
     useEffect(() => {
-        if (!refetchTrigger || !authenticated || !user?.id || !profile?.is_initialized) return;
+        if (!refetchTrigger || !authenticated || !user?.id || !zenigmaAddress) return;
 
         const walletId = extractPrivyWalletId(user.id);
         console.log('🔄 [OrderPanel] SSE trigger refetch, refetchTrigger:', refetchTrigger);
@@ -334,7 +328,7 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
         getOrderList(walletId, filters)
             .then(response => setOrders(response.data || []))
             .catch(err => console.error('SSE trigger refetch failed:', err));
-    }, [refetchTrigger]);
+    }, [refetchTrigger, authenticated, user?.id, zenigmaAddress, filters]);
 
     const hasOrders = orders.length > 0;
     return (
@@ -532,10 +526,10 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
                     </tr>
                     </thead>
                     <tbody>
-                    {!authenticated ? (
+                    {!zenigmaAddress ? (
                         <tr>
                             <td colSpan={9} className="text-center py-20 text-gray-400">
-                                Sign in to view your orders.
+                                Sign in to Zenigma to view your orders.
                             </td>
                         </tr>
                     ) : loading ? (
@@ -626,7 +620,7 @@ const OrderPanel = ({ refetchTrigger }: OrderPanelProps) => {
                                     {/* Filled */}
                                     <td className="px-3 py-3 text-right">
                                         <span className={`text-xs ${order.filled > 0 ? 'text-white' : 'text-gray-400'}`}>
-                                            {filledPercent}%
+                                            {order.filled.toFixed(2)}
                                         </span>
                                     </td>
 

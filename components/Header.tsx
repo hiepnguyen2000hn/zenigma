@@ -1,14 +1,15 @@
 "use client";
-import {useState, useEffect} from 'react';
+import {useState, useEffect, useRef} from 'react';
 import ConnectButton from './ConnectButton';
 import DepositModal from './DepositModal';
-import {getAllTokens} from "@/lib/services";
-import {useProof} from '@/hooks/useProof';
 import {useUserProfile} from '@/hooks/useUserProfile';
+import {useProof} from '@/hooks/useProof';
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 import Image from 'next/image';
 import { getAllKeys } from '@/lib/ethers-signer';
+import { usePrivy } from '@privy-io/react-auth';
+
 interface HeaderProps {
     onToggleSidebar?: () => void;
 }
@@ -16,29 +17,40 @@ interface HeaderProps {
 const Header = ({ onToggleSidebar }: HeaderProps = {}) => {
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const pathname = usePathname();
+    const hasAutoInitRef = useRef(false);
 
-    // ✅ Use initWalletClientSide from useProof hook
-    const { initWalletClientSide, isInitializing, initStep } = useProof();
+    const { authenticated } = usePrivy();
+    const { initWalletClientSide } = useProof();
     const { profile } = useUserProfile();
-    const keys = getAllKeys()
-    const fetchTokens = async () => {
-        const response = await getAllTokens()
-
-    }
-
-    const hdlGenWallet = async() => {
-        const keys = getAllKeys()
-        console.log(profile, 'profile11111111111111111', keys)
-        if(profile && profile.is_initialized && !keys.pk_root) {
-            await initWalletClientSide()
-        }
-        return
-    }
+    const keys = getAllKeys();
 
     useEffect(() => {
-        fetchTokens()
-    }, [])
+        const autoInitWallet = async () => {
+            // Only run once per session (use sessionStorage to persist across page navigations)
+            if (hasAutoInitRef.current) return;
 
+            const hasAttempted = sessionStorage.getItem('zenigma_auto_init_attempted');
+            if (hasAttempted === 'true') return;
+
+            // Check conditions: authenticated + is_initialized + no keys in localStorage
+            const currentKeys = getAllKeys();
+            if (authenticated && profile?.is_initialized && !currentKeys.pk_root) {
+                console.log('🔄 [Header] Auto-init wallet for returning user...');
+                hasAutoInitRef.current = true;
+                sessionStorage.setItem('zenigma_auto_init_attempted', 'true');
+                await initWalletClientSide(true); // true = already initialized, skip API call
+            }
+        };
+
+        autoInitWallet();
+    }, [authenticated, profile?.is_initialized, initWalletClientSide]);
+
+    useEffect(() => {
+        if (!authenticated) {
+            hasAutoInitRef.current = false;
+            sessionStorage.removeItem('zenigma_auto_init_attempted');
+        }
+    }, [authenticated]);
 
     return (
         <header className="border-b border-gray-800 bg-black">

@@ -647,7 +647,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     if (enteredAmount > availableBalance) {
                         return {
                             canProceed: false,
-                            errorMessage: `Insufficient balance. You have ${availableBalance} ${selectedTokenType}`
+                            errorMessage: `Insufficient balance`
                         };
                     }
                 } else if (selectedTokenType === 'native') {
@@ -655,7 +655,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     if (enteredAmount > availableBalance) {
                         return {
                             canProceed: false,
-                            errorMessage: `Insufficient balance. You have ${availableBalance} ${NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol}`
+                            errorMessage: `Insufficient balance`
                         };
                     }
                 }

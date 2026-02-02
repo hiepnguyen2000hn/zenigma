@@ -33,7 +33,6 @@ interface PortfolioSidebarProps {
 }
 
 const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
-    const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const [shouldInitZenigma, setShouldInitZenigma] = useState(false);
     const router = useRouter();
 
@@ -42,23 +41,19 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     const { wallets } = useWallets();
     const privyWalletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
 
-    // Get pk_root (Zenigma wallet address) - reactive via Jotai atom
     const zenigmaAddress = useZenigmaAddress();
 
-    // Get user profile data (for is_initialized check)
     const { profile, loading: profileLoading, fetchProfile, clearProfile } = useUserProfile();
-    // Get user balance from API
     const { balance: userBalance, loading: balanceLoading, fetchBalance } = useUserBalance();
 
-    // Get initWalletClientSide from useProof hook
     const { initWalletClientSide } = useProof();
 
-    // Fetch balance if not already loaded
+    // Fetch balance only when Zenigma is connected (not just Privy)
     useEffect(() => {
-        if (!user?.id || userBalance) return;
+        if (!user?.id || !zenigmaAddress || userBalance) return;
         const walletId = extractPrivyWalletId(user.id);
         fetchBalance(walletId);
-    }, [user?.id, userBalance, fetchBalance]);
+    }, [user?.id, zenigmaAddress, userBalance, fetchBalance]);
 
     // Privy login hook
     const { login } = useLogin({
@@ -73,8 +68,22 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
             }
         },
         onError: (error) => {
-            console.error('❌ [PortfolioSidebar] Login error:', error);
-            toast.error('Login failed');
+            // Don't show error when user simply closes the modal
+            // Privy error codes: https://docs.privy.io/guide/react/errors
+            const errorCode = String(error || '');
+            const isUserCancelled =
+                errorCode.includes('exited') ||
+                errorCode.includes('cancelled') ||
+                errorCode.includes('canceled') ||
+                errorCode.includes('closed') ||
+                errorCode.includes('dismissed');
+
+            if (!isUserCancelled) {
+                console.error('❌ [PortfolioSidebar] Login error:', error);
+                toast.error('Login failed');
+            } else {
+                console.log('ℹ️ [PortfolioSidebar] User cancelled login');
+            }
             setShouldInitZenigma(false);
         },
     });
@@ -103,11 +112,17 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     const handleZenigmaInit = async () => {
         try {
             console.log('🔐 [PortfolioSidebar] Initializing Zenigma wallet...');
-            const success = await initWalletClientSide(profile?.is_initialized);
+            const isAlreadyInitialized = profile?.is_initialized;
+            const success = await initWalletClientSide(isAlreadyInitialized);
             if (success && user?.id) {
                 const walletId = extractPrivyWalletId(user.id);
                 await fetchProfile(walletId);
-                toast.success('Your wallet initialization is queued, please allow a few minutes for it to sync');
+                // Only show "queued" message for first-time initialization
+                if (!isAlreadyInitialized) {
+                    toast.success('Your wallet initialization is queued, please allow a few minutes for it to sync');
+                } else {
+                    toast.success('Signed in to Zenigma');
+                }
             }
         } catch (error) {
             console.error('❌ [PortfolioSidebar] Zenigma init error:', error);
@@ -451,7 +466,17 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                             transition={{ delay: isOpen ? 0.2 : 0 }}
                             className="px-3 space-y-1.5"
                         >
-                            {isLoading ? (
+                            {!zenigmaAddress ? (
+                            // Not signed in to Zenigma - show sign in prompt
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: isOpen ? 1 : 0, scale: isOpen ? 1 : 0.9 }}
+                                transition={{ delay: isOpen ? 0.2 : 0 }}
+                                className="text-center py-12 text-gray-500"
+                            >
+                                <div className="text-sm">Sign in to Zenigma to view your assets.</div>
+                            </motion.div>
+                        ) : isLoading ? (
                             // Loading skeleton - Compact
                             <>
                                 {[1, 2, 3, 4, 5, 6].map((i) => (

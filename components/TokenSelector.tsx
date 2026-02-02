@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Search } from "lucide-react";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSetAtom } from "jotai";
 import { updateTradingPairAtom } from "@/store/trading";
 import { useTokens } from "@/hooks/useTokens";
@@ -137,29 +137,61 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const pathname = usePathname();
+  const router = useRouter();
   const updateTradingPair = useSetAtom(updateTradingPairAtom);
 
   // ✅ Fetch tokens from API with cache
   const { tokens, isLoading } = useTokens();
+  const URL_TO_TOKEN_MAP: Record<string, string> = {
+    'BTC': 'WBTC',
+    'ETH': 'WETH',
+    'BNB': 'WBNB',
+  };
 
-  // ✅ Auto-detect token from URL (e.g., /TradingDashboard/btc-usdc -> BTC)
+  const TOKEN_TO_URL_MAP: Record<string, string> = {
+    'WBTC': 'btc',
+    'WETH': 'eth',
+    'WBNB': 'bnb',
+  };
+
+  // Convert token symbol to URL-friendly name
+  const tokenToUrlName = (symbol: string): string => {
+    return TOKEN_TO_URL_MAP[symbol.toUpperCase()] || symbol.toLowerCase();
+  };
+
   const getTokenFromUrl = (): string | null => {
     if (!pathname) return null;
 
-    // Match pattern: /TradingDashboard/btc-usdc or /TradingDashboard/[pair]
     const match = pathname.match(/\/TradingDashboard\/([^\/]+)/);
     if (!match) return null;
 
     const pair = match[1]; // e.g., "btc-usdc"
     const [baseToken] = pair.split('-'); // e.g., "btc"
+    const upperToken = baseToken ? baseToken.toUpperCase() : null;
 
-    return baseToken ? baseToken.toUpperCase() : null;
+    return upperToken ? (URL_TO_TOKEN_MAP[upperToken] || upperToken) : null;
   };
 
-  // ✅ Priority: URL token > selectedToken prop
   const urlToken = getTokenFromUrl();
   const effectiveToken = urlToken || selectedToken;
-  const selected = tokens.find((t) => t.symbol === effectiveToken) || tokens[0];
+
+  const findToken = (symbol: string) => {
+    // Direct match
+    let found = tokens.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
+    if (found) return found;
+
+    // Try wrapped variant (BTC -> WBTC)
+    found = tokens.find((t) => t.symbol.toUpperCase() === `W${symbol.toUpperCase()}`);
+    if (found) return found;
+
+    // Try unwrapped variant (WBTC -> BTC)
+    if (symbol.startsWith('W')) {
+      found = tokens.find((t) => t.symbol.toUpperCase() === symbol.slice(1).toUpperCase());
+    }
+    return found;
+  };
+
+  const selected = findToken(effectiveToken) || tokens.filter(t => t.symbol !== 'USDC')[0] || tokens[0];
 
   // ✅ Auto-update parent when URL changes (sync URL -> state)
   useEffect(() => {
@@ -199,10 +231,10 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
         const currentPair = match[1]; // e.g., "btc-usdc"
         const [_, quoteToken] = currentPair.split('-'); // Get quote token (e.g., "usdc")
 
-        // Build new pair
-        const newPairSymbol = `${token.symbol.toLowerCase()}-${quoteToken || 'usdc'}`;
+        // Build new pair with URL-friendly token name (WBTC -> btc)
+        const urlTokenName = tokenToUrlName(token.symbol);
+        const newPairSymbol = `${urlTokenName}-${quoteToken || 'usdc'}`;
         const newUrl = `/TradingDashboard/${newPairSymbol}`;
-
 
         // ✅ Update store (triggers Chart re-render)
         updateTradingPair({
@@ -211,8 +243,8 @@ const TokenSelector = ({ selectedToken, onSelectToken, className = "" }: TokenSe
           symbol: newPairSymbol,
         });
 
-        // ✅ Update URL without reload page
-        window.history.pushState({}, '', newUrl);
+        // ✅ Update URL using Next.js router (triggers proper navigation)
+        router.push(newUrl, { scroll: false });
       }
     }
 
