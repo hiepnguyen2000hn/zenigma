@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChevronDown, ExternalLink, Circle } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
@@ -8,13 +8,19 @@ import { useTokenMapping } from '@/hooks/useTokenMapping';
 import { getTransferHistory, type Transfer } from '@/lib/services';
 import { extractPrivyWalletId } from '@/lib/wallet-utils';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useUserBalance } from '@/hooks/useUserBalance';
+import { useZenigmaAddress } from '@/hooks/useWalletKeys';
+import { connectSSE, disconnectSSE } from '@/lib/sse.client';
 import Header from './Header';
+import Pagination from './Pagination';
 import WithdrawModal from './WithdrawModal';
 import DepositModal from './DepositModal';
 import DateTimeRangePicker from './DateTimeRangePicker';
 import { useTokens } from '@/hooks/useTokens';
 import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
+import { DEFAULT_PAGINATION } from '@/lib/constants';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import toast from 'react-hot-toast';
 
 // Transfer direction mapping (from API string to UI display)
 const TRANSFER_DIRECTION = {
@@ -72,6 +78,8 @@ const MyAssets = () => {
   const { getSymbol } = useTokenMapping();
   const { tokens, isLoading: isLoadingTokens, isLoaded: isTokensLoaded } = useTokens();
   const { profile, loading: profileLoading, fetchProfile } = useUserProfile();
+  const { balance: userBalance, loading: balanceLoading, fetchBalance } = useUserBalance();
+  const zenigmaAddress = useZenigmaAddress();
 
   // Filter tokens with valid contract addresses for balance reading
   // Only USDC, WETH, USDT (real addresses) will be queried
@@ -81,10 +89,11 @@ const MyAssets = () => {
   }, [tokens]);
 
   // Pass only valid tokens to read wallet balances
-  const { balances: walletBalances, isLoading: isLoadingWalletBalances } = useAllTokenBalances(validTokensForBalance);
+  const { balances: walletBalances, isLoading: isLoadingWalletBalances, refetchBalances } = useAllTokenBalances(validTokensForBalance);
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [totalTransfers, setTotalTransfers] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
@@ -103,8 +112,8 @@ const MyAssets = () => {
 
   // Filter state
   const [filters, setFiltersState] = useState<TransferFilters>({
-    page: 1,
-    limit: 20,
+    page: DEFAULT_PAGINATION.PAGE,
+    limit: DEFAULT_PAGINATION.LIMIT,
   });
 
   // Date range state
@@ -123,8 +132,8 @@ const MyAssets = () => {
   // Clear all filters
   const clearFilters = () => {
     setFiltersState({
-      page: 1,
-      limit: 20,
+      page: DEFAULT_PAGINATION.PAGE,
+      limit: DEFAULT_PAGINATION.LIMIT,
     });
     setStartDate(null);
     setEndDate(null);
@@ -176,7 +185,7 @@ const MyAssets = () => {
   }, [startDate, endDate]);
 
   // ✅ Fetch transfer history helper function
-  const fetchTransferHistory = async () => {
+  const fetchTransferHistory = useCallback(async () => {
     if (!user?.id) return;
 
     try {
@@ -191,7 +200,91 @@ const MyAssets = () => {
     } catch (err) {
       console.error('Failed to refetch transfer history:', err);
     }
+  }, [user?.id]);
+
+  // ============================================
+  // SSE Message Handler (stored in ref to avoid reconnection)
+  // ============================================
+  const handleSSEMessage = (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      const eventType = data.type || data.event;
+
+      console.log('[SSE][MyAssets] Received message:', eventType, data);
+
+      if (eventType === 'transfer:status') {
+        console.log('[SSE][MyAssets] transfer:status:', data);
+
+        const transferData = data.data || data;
+        if (transferData.status === 'completed') {
+          // Re-fetch balance to update Zenigma balances
+          if (user?.id) {
+            const walletId = extractPrivyWalletId(user.id);
+            fetchBalance(walletId).then(balanceData => {
+              if (balanceData?.balances) {
+                const assetsList: Asset[] = tokens.map(token => {
+                  const tokenBalance = balanceData.balances.find(
+                    b => b.token_index === token.index
+                  );
+                  return {
+                    tokenIndex: token.index,
+                    balance: tokenBalance?.available || '0',
+                  };
+                });
+                setAssets(assetsList);
+              }
+            });
+          }
+
+          // Re-fetch transfer history for both DEPOSIT and WITHDRAW
+          fetchTransferHistory();
+
+          // Show toast based on transfer direction
+          const tokenSymbol = getSymbol(transferData.token_index) || 'TOKEN';
+          const amount = transferData.amount || '0';
+          if (transferData.direction === 'DEPOSIT') {
+            toast.success(`Deposit successful: ${amount} ${tokenSymbol}`);
+          } else if (transferData.direction === 'WITHDRAW') {
+            // Refetch wallet balances when WITHDRAW (token transferred to wallet)
+            refetchBalances();
+            toast.success(`Withdraw successful: ${amount} ${tokenSymbol}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[SSE][MyAssets] Error parsing message:', error, event.data);
+    }
   };
+
+  // Store handler in ref to always have latest version
+  const sseHandlerRef = useRef(handleSSEMessage);
+  sseHandlerRef.current = handleSSEMessage;
+
+  // ============================================
+  // SSE Connection Effect - Only depends on user?.id
+  // ============================================
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const walletId = extractPrivyWalletId(user.id);
+    console.log('[SSE][MyAssets] Connecting with walletId:', walletId);
+
+    const eventSource = connectSSE(walletId);
+
+    if (eventSource) {
+      // Use ref wrapper to always call latest handler
+      eventSource.onmessage = (event) => sseHandlerRef.current(event);
+    }
+
+    // Cleanup on unmount or walletId change
+    return () => {
+      if (eventSource) {
+        eventSource.onmessage = null;
+      }
+      disconnectSSE();
+      console.log('[SSE][MyAssets] Disconnected on cleanup');
+    };
+  }, [user?.id]);
 
   // Effect: Fetch profile (nếu cần) và transfers
   // Deps: user?.id (wallet), isTokensLoaded (tokens ready), filters (user filter change)
@@ -207,29 +300,41 @@ const MyAssets = () => {
 
       try {
         // Step 1: Fetch profile nếu chưa có
-        let currentProfile = profile;
-        if (!currentProfile) {
+        if (!profile) {
           console.log('📥 [MyAssets] Fetching profile...');
-          currentProfile = await fetchProfile(walletId);
+          await fetchProfile(walletId);
         }
 
         if (isCancelled) return;
 
-        // Step 2: Calculate assets từ profile
-        if (currentProfile) {
-          const assetsList: Asset[] = tokens.map(token => ({
-            tokenIndex: token.index,
-            balance: currentProfile.available_balances?.[token.index] || '0',
-          }));
+        // Step 2: Fetch balance from API only if not already loaded
+        let balanceData = userBalance;
+        if (!userBalance) {
+          console.log('📥 [MyAssets] Fetching balance...');
+          balanceData = await fetchBalance(walletId);
+        }
+
+        if (isCancelled) return;
+
+        if (balanceData?.balances) {
+          const assetsList: Asset[] = tokens.map(token => {
+            const tokenBalance = balanceData!.balances.find(
+              b => b.token_index === token.index
+            );
+            return {
+              tokenIndex: token.index,
+              balance: tokenBalance?.available || '0',
+            };
+          });
           setAssets(assetsList);
         }
 
         // Step 3: Fetch transfers
         console.log('🔄 [MyAssets] Fetching transfers...');
         const transferResponse = await getTransferHistory(walletId, filters);
-
         if (isCancelled) return;
         setTransfers(transferResponse.data || []);
+        setTotalTransfers(transferResponse.total ? transferResponse.total : 0);
       } catch (err) {
         console.error('❌ [MyAssets] Failed to fetch data:', err);
         if (!isCancelled) {
@@ -250,7 +355,23 @@ const MyAssets = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, isTokensLoaded, filters]);
 
-  // Effect 3: Cleanup khi logout
+  // Effect: Sync assets when userBalance changes (for SSE updates)
+  useEffect(() => {
+    if (tokens.length > 0 && userBalance?.balances) {
+      const assetsList: Asset[] = tokens.map(token => {
+        const tokenBalance = userBalance.balances.find(
+          b => b.token_index === token.index
+        );
+        return {
+          tokenIndex: token.index,
+          balance: tokenBalance?.available || '0',
+        };
+      });
+      setAssets(assetsList);
+    }
+  }, [tokens, userBalance]);
+
+  // Effect: Cleanup khi logout
   useEffect(() => {
     if (!authenticated) {
       setAssets([]);
@@ -304,21 +425,21 @@ const MyAssets = () => {
                       Asset
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Balance Wallet
+                      Wallet Balance
                     </th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Balance Zenigma
+                      Zenigma Balance
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-black divide-y divide-gray-800">
-                  {!authenticated ? (
+                  {!zenigmaAddress ? (
                     <tr>
                       <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
-                        Sign in to view your assets.
+                        Sign in to Zenigma to view your assets.
                       </td>
                     </tr>
-                  ) : loading || isLoadingTokens || profileLoading || isLoadingWalletBalances ? (
+                  ) : (loading || isLoadingTokens || profileLoading || balanceLoading || isLoadingWalletBalances) && assets.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-6 py-20 text-center text-gray-400">
                         Loading assets...
@@ -427,8 +548,20 @@ const MyAssets = () => {
                     : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                 }`}
               >
-                <Circle className={`w-3 h-3 ${filters.status && filters.status.length > 0 ? 'text-green-500 fill-green-500' : ''}`} />
-                <span>Status</span>
+                <Circle className={`w-3 h-3 ${
+                  filters.status?.[0] === 'pending' ? 'text-yellow-500 fill-yellow-500' :
+                  filters.status?.[0] === 'completed' ? 'text-green-500 fill-green-500' :
+                  filters.status?.[0] === 'failed' ? 'text-red-500 fill-red-500' : ''
+                }`} />
+                <span className={
+                  filters.status?.[0] === 'pending' ? 'text-yellow-500' :
+                  filters.status?.[0] === 'completed' ? 'text-green-500' :
+                  filters.status?.[0] === 'failed' ? 'text-red-500' : ''
+                }>
+                  {filters.status?.[0] === 'pending' ? 'Pending' :
+                   filters.status?.[0] === 'completed' ? 'Completed' :
+                   filters.status?.[0] === 'failed' ? 'Failed' : 'Status'}
+                </span>
                 <ChevronDown size={16} className={`transition-transform ${showFilters.status ? 'rotate-180' : ''}`} />
               </button>
 
@@ -478,8 +611,17 @@ const MyAssets = () => {
                     : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                 }`}
               >
-                <Circle className={`w-3 h-3 ${filters.direction && filters.direction.length > 0 ? 'text-blue-500 fill-blue-500' : ''}`} />
-                <span>Type</span>
+                <Circle className={`w-3 h-3 ${
+                  filters.direction?.[0] === '0' ? 'text-green-500 fill-green-500' :
+                  filters.direction?.[0] === '1' ? 'text-red-500 fill-red-500' : ''
+                }`} />
+                <span className={
+                  filters.direction?.[0] === '0' ? 'text-green-500' :
+                  filters.direction?.[0] === '1' ? 'text-red-500' : ''
+                }>
+                  {filters.direction?.[0] === '0' ? 'Deposit' :
+                   filters.direction?.[0] === '1' ? 'Withdraw' : 'Type'}
+                </span>
                 <ChevronDown size={16} className={`transition-transform ${showFilters.direction ? 'rotate-180' : ''}`} />
               </button>
 
@@ -517,8 +659,16 @@ const MyAssets = () => {
                     : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                 }`}
               >
-                <Circle className={`w-3 h-3 ${filters.token !== undefined ? 'text-purple-500 fill-purple-500' : ''}`} />
-                <span>Token</span>
+                {filters.token !== undefined ? (
+                  <TokenIconBySymbol symbol={tokens.find(t => t.index === filters.token)?.symbol || ''} size="sm" />
+                ) : (
+                  <Circle className="w-3 h-3" />
+                )}
+                <span>
+                  {filters.token !== undefined
+                    ? tokens.find(t => t.index === filters.token)?.symbol || 'Token'
+                    : 'Token'}
+                </span>
                 <ChevronDown size={16} className={`transition-transform ${showFilters.token ? 'rotate-180' : ''}`} />
               </button>
 
@@ -593,13 +743,13 @@ const MyAssets = () => {
                 </tr>
               </thead>
               <tbody className="bg-black divide-y divide-gray-800">
-                {!authenticated ? (
+                {!zenigmaAddress ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-gray-400">
-                      Sign in to view your transfer history.
+                      Sign in to Zenigma to view your transfer history.
                     </td>
                   </tr>
-                ) : loading || profileLoading ? (
+                ) : (loading || profileLoading) && transfers.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-gray-400">
                       Loading transfers...
@@ -681,6 +831,20 @@ const MyAssets = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination for Transfer History */}
+          {zenigmaAddress && !loading && transfers.length > 0 && (
+            <Pagination
+              currentPage={filters.page || DEFAULT_PAGINATION.PAGE}
+              totalPages={Math.ceil(totalTransfers / (filters.limit || DEFAULT_PAGINATION.LIMIT))}
+              totalItems={totalTransfers}
+              pageSize={filters.limit || DEFAULT_PAGINATION.LIMIT}
+              onPageChange={(page) => setFiltersState((prev) => ({ ...prev, page }))}
+              onPageSizeChange={(limit) => setFiltersState((prev) => ({ ...prev, limit, page: DEFAULT_PAGINATION.PAGE }))}
+              showPageSizeSelector
+              pageSizeOptions={[5, 10, 20, 50]}
+            />
+          )}
         </div>
       </div>
 

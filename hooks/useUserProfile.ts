@@ -75,6 +75,7 @@ export function useUserProfile() {
         blinder: backendProfile.blinder,
         is_initialized: backendProfile.is_initialized || false,
         sync: backendProfile.sync || false,
+        is_locked: backendProfile.is_locked || false,
         last_tx_hash: backendProfile.last_tx_hash,
 
         // Timestamps

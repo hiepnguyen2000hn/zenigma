@@ -5,10 +5,10 @@ import { X } from 'lucide-react';
 import Stepper, { Step } from './Stepper';
 import { useERC20Token } from '@/hooks/useERC20Token';
 import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
-import { DARKPOOL_CORE_ADDRESS, PERMIT2_ADDRESS, getAvailableERC20Tokens } from '@/lib/constants';
+import { DARKPOOL_CORE_ADDRESS, PERMIT2_ADDRESS, getAvailableERC20Tokens, BALANCE_PERCISION } from '@/lib/constants';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokens } from '@/hooks/useTokens';
-import { type Token, getUserProfile } from '@/lib/services';
+import { type Token, getUserProfile, scaleToInt, limitDecimalPlaces, getErrorMessage } from '@/lib/services';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
@@ -222,20 +222,20 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 const profile = await getUserProfile(walletId);
                 console.log('✅ Profile loaded:', profile);
 
-                // Check if system is syncing
-                if (profile.sync === false) {
+                // Check if account is locked
+                if (profile && (profile.is_locked || !profile.sync)) {
                     toast('System is synchronizing, please try again in a few minutes', {
-                        icon: '⏳',
+                        icon: '⚠️',
                         duration: 4000,
                         style: {
                             borderRadius: '12px',
                             background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
                             color: '#fff',
-                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            border: '1px solid rgba(251, 191, 36, 0.5)',
                             padding: '16px 20px',
                             fontSize: '14px',
                             fontWeight: '500',
-                            boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)',
+                            boxShadow: '0 10px 40px rgba(251, 191, 36, 0.15), 0 0 0 1px rgba(251, 191, 36, 0.1)',
                         },
                     });
                     setIsProcessing(false);
@@ -279,13 +279,13 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 });
 
                 // Step 4: Create TransferAction
-                // ⚠️ IMPORTANT: amount must be in smallest unit (base units for ERC20)
-                const amountInBaseUnits = parseUnits(amount, tokenDecimals).toString();
+                const depositAmountScaled = scaleToInt(amount, BALANCE_PERCISION);
+
                 const action: TransferAction = {
                     type: 'transfer',
                     direction: 0,
                     token_index: tokenFromAPI.index, // Use index from API
-                    amount: amount, // ✅ String of integer (base units)
+                    amount: depositAmountScaled, // ✅ String of integer (base units)
                     permit2Nonce: permit2Data.permit2Nonce.toString(),
                     permit2Deadline: permit2Data.permit2Deadline.toString(),
                     permit2Signature: permit2Data.permit2Signature
@@ -308,10 +308,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 // Step 6: Generate proof
                 setProcessingStep('Generating proof (this may take a moment)...');
                 console.log('🔐 Step 6: Generating wallet update proof...');
-                const userSecret = '12312';
 
                 const proofData = await generateWalletUpdateProofClient({
-                    userSecret,
                     oldNonce: profile.nonce?.toString() || '0',
                     oldMerkleRoot: profile.merkle_root,
                     oldMerkleIndex: profile.merkle_index,
@@ -333,6 +331,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 // Step 8: Verify proof
                 setProcessingStep('Verifying proof...');
                 console.log('🔍 Step 8: Verifying proof...');
+                if (operations.transfer) {
+                    operations.transfer.amount = amount
+                }
                 const verifyResult = await verifyProof({
                     proof: proofData.proof,
                     publicInputs: proofData.publicInputs,
@@ -352,7 +353,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success('Proof created and queued. Sync may take a few minutes.', {
+                        toast.success('Your deposit is queued, please allow a few minutes for it to sync', {
                             duration: 5000,
                         });
                     } else {
@@ -452,20 +453,20 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 const profile = await getUserProfile(walletId);
                 console.log('✅ Profile loaded:', profile);
 
-                // Check if system is syncing
-                if (profile.sync === false) {
+                // Check if account is locked
+                if (profile && (profile.is_locked || !profile.sync)) {
                     toast('System is synchronizing, please try again in a few minutes', {
-                        icon: '⏳',
+                        icon: '⚠️',
                         duration: 4000,
                         style: {
                             borderRadius: '12px',
                             background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
                             color: '#fff',
-                            border: '1px solid rgba(59, 130, 246, 0.3)',
+                            border: '1px solid rgba(251, 191, 36, 0.5)',
                             padding: '16px 20px',
                             fontSize: '14px',
                             fontWeight: '500',
-                            boxShadow: '0 10px 40px rgba(59, 130, 246, 0.15), 0 0 0 1px rgba(59, 130, 246, 0.1)',
+                            boxShadow: '0 10px 40px rgba(251, 191, 36, 0.15), 0 0 0 1px rgba(251, 191, 36, 0.1)',
                         },
                     });
                     setIsProcessing(false);
@@ -509,12 +510,12 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
 
                 // Step 5: Create TransferAction
                 // ⚠️ IMPORTANT: amount must be in Wei (18 decimals for ETH/WETH)
-                const amountInWeiString = amountInWei.toString(); // Already parsed as BigInt earlier
+                const depositAmountScaled = scaleToInt(amount, BALANCE_PERCISION);
                 const actionNative: TransferAction = {
                     type: 'transfer',
                     direction: 0,
                     token_index: wethToken.index,
-                    amount: amountInWeiString, // ✅ String of Wei (e.g. "100000000000000" for 0.0001 ETH)
+                    amount: depositAmountScaled, 
                     permit2Nonce: permit2Data.permit2Nonce.toString(),
                     permit2Deadline: permit2Data.permit2Deadline.toString(),
                     permit2Signature: permit2Data.permit2Signature
@@ -537,10 +538,8 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 // Step 7: Generate proof
                 setProcessingStep('Generating proof (this may take a moment)...');
                 console.log('🔐 Step 7: Generating wallet update proof...');
-                const userSecret = '12312';
 
                 const proofDataNative = await generateWalletUpdateProofClient({
-                    userSecret,
                     oldNonce: profile.nonce?.toString() || '0',
                     oldMerkleRoot: profile.merkle_root,
                     oldMerkleIndex: profile.merkle_index,
@@ -581,7 +580,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             console.log('✅ Profile refreshed with new balances');
                         }
 
-                        toast.success('Proof created and queued. Sync may take a few minutes.', {
+                        toast.success('Your deposit is queued, please allow a few minutes for it to sync', {
                             duration: 5000,
                         });
                     } else {
@@ -608,7 +607,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
             handleClose(); // ✅ Close modal and reset state
         } catch (error) {
             console.error('❌ Error in deposit process:', error);
-            toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
+            toast.error(getErrorMessage(error));
             // Error - hide loading overlay, keep modal open for user to retry
             setIsProcessing(false);
             setProcessingStep('');
@@ -648,7 +647,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     if (enteredAmount > availableBalance) {
                         return {
                             canProceed: false,
-                            errorMessage: `Insufficient balance. You have ${availableBalance} ${selectedTokenType}`
+                            errorMessage: `Insufficient balance`
                         };
                     }
                 } else if (selectedTokenType === 'native') {
@@ -656,7 +655,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                     if (enteredAmount > availableBalance) {
                         return {
                             canProceed: false,
-                            errorMessage: `Insufficient balance. You have ${availableBalance} ${NETWORKS.find(n => n.chainId === selectedChainId)?.nativeSymbol}`
+                            errorMessage: `Insufficient balance`
                         };
                     }
                 }
@@ -854,9 +853,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                                         </label>
                                         <div className="relative">
                                             <input
-                                                type="number"
+                                                type="text"
                                                 value={amount}
-                                                onChange={(e) => setAmount(e.target.value)}
+                                                onChange={(e) => setAmount(limitDecimalPlaces(e.target.value))}
                                                 placeholder="0.00"
                                                 className="w-full px-3 py-2.5 pr-20 bg-gray-800/50 border border-gray-700/70 rounded-lg text-white text-sm focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all"
                                             />

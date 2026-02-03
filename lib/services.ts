@@ -1,15 +1,5 @@
-/**
- * API Services - Centralized API call functions
- *
- * Tất cả các API calls được export từ file này
- */
-
 import apiClient from './api';
 import { API_ENDPOINTS } from './constants';
-
-// ============================================
-// TYPES
-// ============================================
 
 export interface Token {
   name: string;
@@ -33,6 +23,9 @@ export interface Order {
 
 export interface OrderListResponse {
   data: Order[];
+  total?: number;
+  page?: number;
+  limit?: number;
 }
 
 export interface MatchingHistory {
@@ -50,6 +43,9 @@ export interface MatchingHistory {
 
 export interface MatchingHistoryResponse {
   data: MatchingHistory[];
+  total?: number;
+  page?: number;
+  limit?: number;
 }
 
 export interface Transfer {
@@ -64,6 +60,24 @@ export interface Transfer {
 
 export interface TransferHistoryResponse {
   data: Transfer[];
+  total?: number;
+  page?: number;
+  limit?: number;
+}
+
+export interface TokenBalanceItem {
+  token_index: number;
+  token_address: string;
+  token_name: string;
+  token_symbol: string;
+  token_decimals: number;
+  available: string;
+  reserved: string;
+  total: string;
+}
+
+export interface UserBalanceResponse {
+  balances: TokenBalanceItem[];
 }
 
 export interface UserProfile {
@@ -86,6 +100,7 @@ export interface UserProfile {
   last_tx_hash?: string;
   created_at: string;
   updated_at: string;
+  is_locked: boolean;
 }
 
 export interface VerifyProofRequest {
@@ -169,10 +184,6 @@ export interface UpdateWalletProofRequest {
   };
 }
 
-// ============================================
-// AUTH SERVICES
-// ============================================
-
 export async function generateNonce(address: string): Promise<{ nonce: string }> {
   const response = await apiClient.post(API_ENDPOINTS.AUTH.GENERATE_NONCE, {
     address,
@@ -188,20 +199,6 @@ export async function login(address: string, signature: string): Promise<{ acces
   return response.data;
 }
 
-// ============================================
-// USER SERVICES
-// ============================================
-
-/**
- * Get current user profile (authenticated via token in cookies)
- *
- * @param wallet_id - Privy user ID (without "did:privy:" prefix)
- * @returns Current user profile
- *
- * @example
- * const profile = await getUserProfile('clp5abc123');
- * console.log(profile.wallet_address);
- */
 export async function getUserProfile(wallet_id: string): Promise<UserProfile> {
   // Replace :id in endpoint with wallet_id
   const endpoint = API_ENDPOINTS.USER.PROFILE.replace(':id', wallet_id);
@@ -211,43 +208,26 @@ export async function getUserProfile(wallet_id: string): Promise<UserProfile> {
   return response.data;
 }
 
-// ============================================
-// TOKEN SERVICES
-// ============================================
+export async function getUserBalance(wallet_id: string): Promise<UserBalanceResponse> {
+  // Replace :id in endpoint with wallet_id
+  const endpoint = API_ENDPOINTS.USER.BALANCE.replace(':id', wallet_id);
 
-/**
- * Get all active tokens
- *
- * @returns List of all active tokens
- *
- * @example
- * const tokens = await getAllTokens();
- * console.log(tokens); // [{ name: 'Bitcoin', symbol: 'BTC', ... }]
- */
+  const response = await apiClient.get(endpoint);
+
+  return response.data;
+}
+
 export async function getAllTokens(): Promise<Token[]> {
   const response = await apiClient.get<Token[]>(API_ENDPOINTS.TOKEN.GET_ALL);
   return response.data;
 }
 
-/**
- * Get token by ID
- *
- * @param id - Token ID
- * @returns Token details
- */
 export async function getTokenById(id: string): Promise<Token> {
   const endpoint = API_ENDPOINTS.TOKEN.GET_BY_ID.replace(':id', id);
   const response = await apiClient.get<Token>(endpoint);
   return response.data;
 }
 
-/**
- * Get token balance for a wallet
- *
- * @param walletAddress - Wallet address
- * @param tokenAddress - Token contract address (optional)
- * @returns Token balances
- */
 export async function getTokenBalance(
   walletAddress: string,
   tokenAddress?: string
@@ -261,38 +241,11 @@ export async function getTokenBalance(
   return response.data;
 }
 
-// ============================================
-// PROOF SERVICES
-// ============================================
-
-/**
- * Verify proof and submit to backend
- *
- * @param data - Proof verification request
- * @returns Verification result
- */
 export async function verifyProof(data: VerifyProofRequest): Promise<any> {
   const response = await apiClient.post(API_ENDPOINTS.PROOF.VERIFY, data);
   return response.data;
 }
 
-/**
- * Initialize wallet proof - Verify wallet initialization proof
- *
- * @param data - Init wallet proof request
- * @returns Verification result
- *
- * @example
- * const result = await initWalletProof({
- *   proof: "0x1234567890abcdef...",
- *   wallet_address: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
- *   randomness: "12345678901234567890",
- *   signature: "0x1234567890abcdef...",
- *   publicInputs: {
- *     initial_commitment: "0x123..."
- *   }
- * });
- */
 export async function initWalletProof(data: InitWalletProofRequest): Promise<any> {
   const response = await apiClient.post(API_ENDPOINTS.PROOF.INIT_WALLET, data);
   return response.data;
@@ -347,29 +300,6 @@ export async function updateWalletProof(data: UpdateWalletProofRequest): Promise
   return response.data;
 }
 
-// ============================================
-// ORDER SERVICES
-// ============================================
-
-/**
- * Get order list with pagination and filters
- *
- * @param wallet_id Wallet ID (extracted from Privy user ID)
- * @param params Query parameters
- * @param params.page Page number (default: 1)
- * @param params.limit Items per page (default: 20)
- * @param params.status Order status filter - array of numbers or strings (e.g., [0, 1] or ["Created", "Matching"])
- * @param params.side Order side filter (0=buy, 1=sell)
- * @param params.token Token filter
- * @param params.from_date Filter from date (ISO 8601)
- * @param params.to_date Filter to date (ISO 8601)
- *
- * @example
- * const walletId = extractPrivyWalletId(user.id);
- * const orders = await getOrderList(walletId, { page: 1, limit: 20 });
- * const filteredOrders = await getOrderList(walletId, { page: 1, limit: 20, status: ['Created'], side: 0 });
- * const multiStatus = await getOrderList(walletId, { status: [0, 1, 2] }); // Open, Partial, Filled
- */
 export async function getOrderList(
   wallet_id: string,
   params?: {
@@ -387,25 +317,6 @@ export async function getOrderList(
   return response.data;
 }
 
-// ============================================
-// MATCHING HISTORY SERVICES
-// ============================================
-
-/**
- * Get matching history with pagination and filters
- *
- * @param wallet_id Wallet ID (extracted from Privy user ID)
- * @param params Query parameters
- * @param params.page Page number (default: 1)
- * @param params.limit Items per page (default: 20)
- * @param params.from_date Filter from timestamp (Unix timestamp in milliseconds)
- * @param params.to_date Filter to timestamp (Unix timestamp in milliseconds)
- *
- * @example
- * const walletId = extractPrivyWalletId(user.id);
- * const history = await getMatchingHistory(walletId, { page: 1, limit: 20 });
- * const filtered = await getMatchingHistory(walletId, { from_date: 1704067200000, to_date: 1735689599999 });
- */
 export async function getMatchingHistory(
   wallet_id: string,
   params?: {
@@ -420,28 +331,6 @@ export async function getMatchingHistory(
   return response.data;
 }
 
-// ============================================
-// BALANCE SERVICES
-// ============================================
-
-/**
- * Get transfer history with pagination and filters
- *
- * @param wallet_id Wallet ID (extracted from Privy user ID)
- * @param params Query parameters
- * @param params.page Page number (default: 1)
- * @param params.limit Items per page (default: 20)
- * @param params.status Transfer status filter - array of strings (e.g., ["queued", "completed", "failed"])
- * @param params.direction Transfer direction filter ("DEPOSIT" | "WITHDRAW")
- * @param params.token Token/asset filter (token index)
- * @param params.from_date Filter from date (ISO 8601)
- * @param params.to_date Filter to date (ISO 8601)
- *
- * @example
- * const walletId = extractPrivyWalletId(user.id);
- * const transfers = await getTransferHistory(walletId, { page: 1, limit: 20 });
- * const deposits = await getTransferHistory(walletId, { direction: "DEPOSIT", status: ["completed"] });
- */
 export async function getTransferHistory(
   wallet_id: string,
   params?: {
@@ -459,17 +348,6 @@ export async function getTransferHistory(
   return response.data;
 }
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-/**
- * Build endpoint with params
- *
- * @example
- * buildEndpoint(API_ENDPOINTS.TOKEN.GET_BY_ID, { id: '123' })
- * // Returns: '/api/v1/token/123'
- */
 export function buildEndpoint(
   endpoint: string,
   params: Record<string, string | number>
@@ -479,4 +357,64 @@ export function buildEndpoint(
     result = result.replace(`:${key}`, String(value));
   });
   return result;
+}
+
+export function scaleToInt(value: string, precision: number): string {
+  const decimals = Math.log10(precision); // e.g. 10000 -> 4, 100000000 -> 8
+  const [intPart, fracPart = ''] = value.split('.');
+  const padded = fracPart.padEnd(decimals, '0').slice(0, decimals);
+  return BigInt(intPart + padded).toString();
+}
+
+export function intToDecimal(value: string, precision: number): string {
+  const decimals = Math.round(Math.log10(precision));
+  const str = value.padStart(decimals + 1, '0');
+  const intPart = str.slice(0, str.length - decimals);
+  const fracPart = str.slice(str.length - decimals).replace(/0+$/, '');
+  return fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
+export function limitDecimalPlaces(value: string, maxDecimals: number = 4): string {
+  if (!value) return value;
+
+  // Remove all characters except digits and decimal point
+  let sanitized = value.replace(/[^0-9.]/g, '');
+
+  // Ensure only one decimal point
+  const decimalCount = (sanitized.match(/\./g) || []).length;
+  if (decimalCount > 1) {
+    // Keep only the first decimal point
+    const firstDotIndex = sanitized.indexOf('.');
+    sanitized = sanitized.slice(0, firstDotIndex + 1) + sanitized.slice(firstDotIndex + 1).replace(/\./g, '');
+  }
+
+  const parts = sanitized.split('.');
+
+  if (parts.length === 1) return sanitized;
+
+  const integerPart = parts[0];
+  const decimalPart = parts[1].slice(0, maxDecimals);
+
+  return `${integerPart}.${decimalPart}`;
+}
+
+/**
+ * Get user-friendly error message from error object
+ * Handles common errors like user rejection
+ */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    // User rejected the transaction/request
+    if (message.includes('user rejected') || message.includes('user denied')) {
+      return 'Transaction was cancelled';
+    }
+
+    // Return first line of error message (before "Details:" or "Version:")
+    const firstLine = error.message.split('\n')[0];
+    return firstLine || 'An error occurred';
+  }
+
+  return 'An unknown error occurred';
 }

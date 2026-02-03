@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useRouter } from "next/navigation";
 import { usePrivy, useWallets, useLogin } from '@privy-io/react-auth';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useUserBalance } from '@/hooks/useUserBalance';
 import { useTokens } from '@/hooks/useTokens';
 import { useZenigmaAddress } from '@/hooks/useWalletKeys';
 import { clearWalletKeysExternal } from '@/store/walletKeys';
@@ -31,22 +33,27 @@ interface PortfolioSidebarProps {
 }
 
 const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
-    const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const [shouldInitZenigma, setShouldInitZenigma] = useState(false);
+    const router = useRouter();
 
     // Get Privy wallet address and logout
     const { user, logout } = usePrivy();
     const { wallets } = useWallets();
     const privyWalletAddress = getWalletAddressByConnectorType(wallets, 'embedded', user);
 
-    // Get pk_root (Zenigma wallet address) - reactive via Jotai atom
     const zenigmaAddress = useZenigmaAddress();
 
-    // Get user profile data (contains available_balances array)
     const { profile, loading: profileLoading, fetchProfile, clearProfile } = useUserProfile();
+    const { balance: userBalance, loading: balanceLoading, fetchBalance } = useUserBalance();
 
-    // Get initWalletClientSide from useProof hook
     const { initWalletClientSide } = useProof();
+
+    // Fetch balance only when Zenigma is connected (not just Privy)
+    useEffect(() => {
+        if (!user?.id || !zenigmaAddress || userBalance) return;
+        const walletId = extractPrivyWalletId(user.id);
+        fetchBalance(walletId);
+    }, [user?.id, zenigmaAddress, userBalance, fetchBalance]);
 
     // Privy login hook
     const { login } = useLogin({
@@ -61,8 +68,22 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
             }
         },
         onError: (error) => {
-            console.error('❌ [PortfolioSidebar] Login error:', error);
-            toast.error('Login failed');
+            // Don't show error when user simply closes the modal
+            // Privy error codes: https://docs.privy.io/guide/react/errors
+            const errorCode = String(error || '');
+            const isUserCancelled =
+                errorCode.includes('exited') ||
+                errorCode.includes('cancelled') ||
+                errorCode.includes('canceled') ||
+                errorCode.includes('closed') ||
+                errorCode.includes('dismissed');
+
+            if (!isUserCancelled) {
+                console.error('❌ [PortfolioSidebar] Login error:', error);
+                toast.error('Login failed');
+            } else {
+                console.log('ℹ️ [PortfolioSidebar] User cancelled login');
+            }
             setShouldInitZenigma(false);
         },
     });
@@ -91,11 +112,17 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     const handleZenigmaInit = async () => {
         try {
             console.log('🔐 [PortfolioSidebar] Initializing Zenigma wallet...');
-            const success = await initWalletClientSide(profile?.is_initialized);
+            const isAlreadyInitialized = profile?.is_initialized;
+            const success = await initWalletClientSide(isAlreadyInitialized);
             if (success && user?.id) {
                 const walletId = extractPrivyWalletId(user.id);
                 await fetchProfile(walletId);
-                toast.success('Proof created and queued. Sync may take a few minutes.');
+                // Only show "queued" message for first-time initialization
+                if (!isAlreadyInitialized) {
+                    toast.success('Your wallet initialization is queued, please allow a few minutes for it to sync');
+                } else {
+                    toast.success('Signed in to Zenigma');
+                }
             }
         } catch (error) {
             console.error('❌ [PortfolioSidebar] Zenigma init error:', error);
@@ -178,13 +205,15 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
     // Get ERC20 tokens config for icons
     const erc20TokensConfig = getAvailableERC20Tokens();
 
-    // Combine token data with balances
+    // Combine token data with balances from useUserBalance
     const tokenBalances = useMemo(() => {
-        if (!profile || !apiTokens || apiTokens.length === 0) return [];
+        if (!apiTokens || apiTokens.length === 0) return [];
 
         return apiTokens.map((token) => {
-            // ✅ FIXED: Use token.index (tokenIndex from API) instead of array index
-            const balance = profile.available_balances?.[token.index] || '0';
+            const tokenBalance = userBalance?.balances?.find(
+                b => b.token_index === token.index
+            );
+            const balance = tokenBalance?.available || '0';
 
             // Get icon from ERC20_TOKENS config
             const tokenConfig = erc20TokensConfig.find(t => t.symbol === token.symbol);
@@ -195,7 +224,7 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                 icon: tokenConfig?.icon,
             };
         });
-    }, [profile, apiTokens, erc20TokensConfig]);
+    }, [userBalance, apiTokens, erc20TokensConfig]);
 
     // Calculate total portfolio value (assume 1:1 USD for stablecoins)
     const totalPortfolioValue = useMemo(() => {
@@ -209,7 +238,7 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
         }, 0);
     }, [tokenBalances]);
 
-    const isLoading = profileLoading || tokensLoading;
+    const isLoading = profileLoading || balanceLoading || tokensLoading;
 
     return (
         <>
@@ -265,9 +294,9 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                             <div className="text-white font-medium text-sm">
                                                 {zenigmaAddress ? 'Zenigma Wallet' : 'Sign in to Zenigma'}
                                             </div>
-                                            {zenigmaAddress && (
+                                            {zenigmaAddress && user?.id && (
                                                 <div className="text-gray-500 text-xs">
-                                                    {formatAddress(zenigmaAddress)}
+                                                    {formatAddress(extractPrivyWalletId(user.id))}
                                                 </div>
                                             )}
                                         </div>
@@ -280,56 +309,36 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                                     )}
                                 </div>
                             </Popover.Trigger>
-                            <Popover.Portal>
-                                <Popover.Content
-                                    side="left"
-                                    sideOffset={8}
-                                    className="w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-[9999] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
-                                >
-                                    {zenigmaAddress && (
-                                        <>
-                                            {/* Full Address */}
-                                            <div className="p-3 border-b border-gray-800">
-                                                <div className="text-gray-400 text-xs font-mono break-all">
-                                                    {zenigmaAddress}
-                                                </div>
+                            {zenigmaAddress && user?.id && (
+                                <Popover.Portal>
+                                    <Popover.Content
+                                        side="left"
+                                        sideOffset={8}
+                                        className="w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-[9999] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
+                                    >
+                                        {/* Wallet ID */}
+                                        <div className="p-3 border-b border-gray-800">
+                                            <div className="text-gray-400 text-xs font-mono break-all">
+                                                {extractPrivyWalletId(user.id)}
                                             </div>
+                                        </div>
 
-                                            {/* Actions */}
-                                            <div className="py-1">
-                                                <Popover.Close asChild>
-                                                    <button
-                                                        onClick={() => handleCopyAddress(zenigmaAddress)}
-                                                        className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-gray-800 transition-colors outline-none"
-                                                    >
-                                                        <Copy size={16} className="text-gray-400" />
-                                                        <span className="text-white text-sm">Copy Address</span>
-                                                    </button>
-                                                </Popover.Close>
-                                                <Popover.Close asChild>
-                                                    <button
-                                                        onClick={() => handleViewExplorer(zenigmaAddress, 'zenigma')}
-                                                        className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-gray-800 transition-colors outline-none"
-                                                    >
-                                                        <ExternalLink size={16} className="text-gray-400" />
-                                                        <span className="text-white text-sm">View on Explorer</span>
-                                                    </button>
-                                                </Popover.Close>
-                                                <Popover.Close asChild>
-                                                    <button
-                                                        onClick={handleZenigmaDisconnect}
-                                                        className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-red-900/20 hover:text-red-400 transition-colors outline-none"
-                                                    >
-                                                        <X size={16} className="text-gray-400" />
-                                                        <span className="text-white text-sm">Disconnect</span>
-                                                    </button>
-                                                </Popover.Close>
-                                            </div>
-                                        </>
-                                    )}
-                                    <Popover.Arrow className="fill-gray-700" />
-                                </Popover.Content>
-                            </Popover.Portal>
+                                        {/* Actions */}
+                                        <div className="py-1">
+                                            <Popover.Close asChild>
+                                                <button
+                                                    onClick={handleZenigmaDisconnect}
+                                                    className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-red-900/20 hover:text-red-400 transition-colors outline-none"
+                                                >
+                                                    <X size={16} className="text-gray-400" />
+                                                    <span className="text-white text-sm">Disconnect</span>
+                                                </button>
+                                            </Popover.Close>
+                                        </div>
+                                        <Popover.Arrow className="fill-gray-700" />
+                                    </Popover.Content>
+                                </Popover.Portal>
+                            )}
                         </Popover.Root>
 
                         {/* Sepolia Wallet Card */}
@@ -436,21 +445,36 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                         className="flex items-center justify-between px-3 py-2"
                     >
                         <h2 className="text-base font-semibold text-white">Assets</h2>
-                        <div className="flex items-center space-x-1 text-white cursor-pointer hover:text-gray-300 transition-colors">
-                            <span className="text-sm font-medium">${totalPortfolioValue.toFixed(2)}</span>
+                        <div
+                            onClick={() => router.push("/assets")}   // ← route bạn muốn
+                            className="flex items-center space-x-1 text-white cursor-pointer hover:text-gray-300 transition-colors"
+                        >
+                            <span className="text-sm font-medium">
+                                ${totalPortfolioValue.toFixed(2)}
+                            </span>
                             <ChevronRight size={16} />
                         </div>
                     </motion.div>
 
-                    {/* Token List - No Scroll */}
-                    <div className="flex-1 overflow-hidden">
+                    {/* Token List */}
+                    <div className="flex-1 overflow-y-auto">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: isOpen ? 1 : 0 }}
                             transition={{ delay: isOpen ? 0.2 : 0 }}
                             className="px-3 space-y-1.5"
                         >
-                            {isLoading ? (
+                            {!zenigmaAddress ? (
+                            // Not signed in to Zenigma - show sign in prompt
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: isOpen ? 1 : 0, scale: isOpen ? 1 : 0.9 }}
+                                transition={{ delay: isOpen ? 0.2 : 0 }}
+                                className="text-center py-12 text-gray-500"
+                            >
+                                <div className="text-sm">Sign in to Zenigma to view your assets.</div>
+                            </motion.div>
+                        ) : isLoading ? (
                             // Loading skeleton - Compact
                             <>
                                 {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -532,28 +556,6 @@ const PortfolioSidebar = ({ isOpen, onClose }: PortfolioSidebarProps) => {
                             )}
                         </motion.div>
                     </div>
-
-                    {/* Bridge & Deposit Section */}
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: isOpen ? 1 : 0 }}
-                        transition={{ delay: isOpen ? 0.25 : 0 }}
-                        className="mt-auto p-3 border-t border-gray-800"
-                    >
-                        <div className="text-gray-500 text-xs mb-3">Bridge & Deposit</div>
-                        <button className="w-full flex items-center space-x-3 p-3 bg-gray-900/50 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors cursor-pointer">
-                            <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center text-gray-500">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                            </div>
-                            <div className="text-left">
-                                <div className="text-white text-sm font-medium">Connect Solana Wallet</div>
-                                <div className="text-gray-500 text-xs">To bridge & deposit USDC</div>
-                            </div>
-                        </button>
-                    </motion.div>
 
                 </div>
             </motion.aside>

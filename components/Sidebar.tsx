@@ -9,7 +9,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useAtomValue, useSetAtom } from 'jotai';
 import { orderInputAtom, toggleOrderSideAtom, tradingPairAtom, updateOrderAmountAtom, updateLimitPriceAtom } from '@/store/trading';
 import { tokensAtom } from '@/store/tokens';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import {getAllKeys, signMessageWithSkRoot} from '@/lib/ethers-signer';
@@ -18,6 +18,8 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import toast from 'react-hot-toast';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
+import { intToDecimal, scaleToInt, limitDecimalPlaces, getErrorMessage } from '@/lib/services';
+import { BALANCE_PERCISION, PERCISION } from '@/lib/constants';
 
 interface SidebarProps {
     selectedCrypto: string;
@@ -35,7 +37,6 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const toggleSide = useSetAtom(toggleOrderSideAtom);
     const updateAmount = useSetAtom(updateOrderAmountAtom);
     const updatePrice = useSetAtom(updateLimitPriceAtom);
-    const [selectedToken, setSelectedToken] = useState('USDC');
     const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingStep, setProcessingStep] = useState('');
@@ -43,6 +44,23 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     const { generateWalletUpdateProofClient } = useWalletUpdateProof();
     const { profile, fetchProfile } = useUserProfile();
     const keys = getAllKeys()
+
+    // ✅ Reset amount and price when wallet disconnects
+    useEffect(() => {
+        if (!authenticated) {
+            updateAmount('');
+            updatePrice('');
+        }
+    }, [authenticated, updateAmount, updatePrice]);
+
+    // ✅ Reset amount and price when leaving the page (component unmount)
+    useEffect(() => {
+        return () => {
+            updateAmount('');
+            updatePrice('');
+        };
+    }, [updateAmount, updatePrice]);
+
     /**
      * Handle wallet initialization and refresh profile after
      */
@@ -70,7 +88,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
      * ✅ Get balance for a token by symbol from profile
      * Only use profile.balances array, return 0 if not found
      */
-    const getTokenBalance = (symbol: string): { pnpmavailable: string; reserved: string; total: string } => {
+    const getTokenBalance = (symbol: string): { available: string; reserved: string; total: string } => {
 
         // ✅ Return 0 if no profile or no balances array
         if (!profile || !profile.balances) {
@@ -108,7 +126,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
         }
 
         // ✅ Check if amount is empty or zero
-        if (!orderInput.amount || parseFloat(orderInput.amount) <= 0) {
+        if (!orderInput.amount || parseFloat(orderInput.amount) <= 0 || !orderInput.limitPrice || parseFloat(orderInput.limitPrice) <= 0) {
             toast.error('Please enter a valid amount');
             return;
         }
@@ -153,7 +171,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             console.log('✅ Profile loaded and stored:', profileData);
 
             // Check if system is syncing
-            if (profileData.sync === false) {
+            if (profileData && (profileData.is_locked || !profileData.sync)) {
                 toast('System is synchronizing, please try again in a few minutes', {
                     icon: '⏳',
                     duration: 4000,
@@ -203,7 +221,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
 
             console.log(tokenIn, tokenOut, 'check------------');
             // ✅ Get price from input or default to '1'
-            const orderPrice = orderInput.limitPrice || '1';
+            const orderPriceScaled = scaleToInt(orderInput.limitPrice || '0', PERCISION);
+            const orderQtyScaled = scaleToInt(orderInput.amount || '0', PERCISION);
 
             console.log('🔍 Token calculation:', {
                 pair: pair,
@@ -220,8 +239,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 operation_type: 0, // 0 = CREATE_ORDER
                 order_index: availableSlot,    // ✅ Slot trống đầu tiên
                 order_data: {
-                    price: orderPrice,         // ✅ Từ limitPrice input
-                    qty: orderInput.amount || '0',    // ✅ Từ amount input
+                    price: orderPriceScaled,         // ✅ Từ limitPrice input
+                    qty: orderQtyScaled,    // ✅ Từ amount input
                     side: orderInput.side === 'buy' ? 0 : 1,  // ✅ 0=buy, 1=sell
                     token_in: tokenIn,         // ✅ Token nhận (động từ store)
                     token_out: tokenOut,       // ✅ Token trả (động từ store)
@@ -233,8 +252,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 details: {
                     pair: pair.symbol,
                     side: orderInput.side,
-                    amount: orderInput.amount,
-                    price: orderPrice,
+                    amount: orderQtyScaled,
+                    price: orderPriceScaled,
                     slot: availableSlot,
                     tokenInName: orderInput.side === 'buy' ? pair.base : pair.quote,   // BUY: nhận WBTC
                     tokenOutName: orderInput.side === 'buy' ? pair.quote : pair.base,  // BUY: trả USDC
@@ -249,20 +268,11 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 profileData.nonce || 0
             );
 
-            console.log('✅ New state calculated:', {
-                availableBalances: newState.available_balances.slice(0, 3),
-                reservedBalances: newState.reserved_balances.slice(0, 3),
-                activeOrders: newState.orders_list.filter(o => o !== null).length,
-                operations
-            });
-
             // Generate proof
             setProcessingStep('Generating proof (this may take a moment)...');
             console.log('🔐 Step 4: Generating wallet update proof...', newState);
-            const userSecret = '12312'; // TODO: Get from secure storage
 
             const proofData = await generateWalletUpdateProofClient({
-                userSecret,
                 oldNonce: profileData.nonce?.toString() || '0',
                 oldMerkleRoot: profileData.merkle_root,
                 oldMerkleIndex: profileData.merkle_index,
@@ -272,7 +282,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                 operations
             });
             if(!proofData.publicInputs) {
-                toast.error('Something went wrong');
+                toast.error('Failed to generate proof');
                 setIsProcessing(false);
                 return;
             }
@@ -298,7 +308,10 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
             });
             console.log(submitResult.success, 'submitResult1')
             if (submitResult.success) {
-                toast.success('Proof created and queued. Sync may take a few minutes.');
+                toast.success('Your order is queued, please allow a few minutes for it to sync');
+                // ✅ Reset amount and price after successful order
+                updateAmount('');
+                updatePrice('');
             } else {
                 console.error('❌ Step 7: Order submission failed:', submitResult.error);
                 toast.error(`Order submission failed: ${submitResult.error}`);
@@ -309,7 +322,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
 
         } catch (error) {
             console.error('❌ Error creating order:', error);
-            toast.error('Something went wrong');
+            toast.error(getErrorMessage(error));
             setIsProcessing(false);
         }
     };
@@ -321,11 +334,14 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
     // ✅ Get balances for current trading pair
     const baseBalance = getTokenBalance(baseSymbol);
     const quoteBalance = getTokenBalance(quoteSymbol);
-
     // ✅ Validate amount against available balance
     const amountValidation = useMemo(() => {
+        const baseBalanceScaled = scaleToInt(baseBalance.available, BALANCE_PERCISION);
+        const quoteBalanceScaled = scaleToInt(quoteBalance.available, BALANCE_PERCISION);
         const amount = parseFloat(orderInput.amount || '0');
-        const price = parseFloat(orderInput.limitPrice || '1');
+        const price = parseFloat(orderInput.limitPrice || '0');
+        const orderQtyScaled = scaleToInt(orderInput.amount || '0', PERCISION);
+        const orderPriceScaled = scaleToInt(orderInput.limitPrice || '0', PERCISION);
 
         // Skip validation if amount is 0 or empty
         if (!orderInput.amount || amount <= 0) {
@@ -333,24 +349,29 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
         }
 
         if (orderInput.side === 'buy') {
+            // BUY: Skip validation if price is not entered yet
+            if (!orderInput.limitPrice || price <= 0) {
+                return { isValid: true, error: null };
+            }
+
             // BUY: Need amount * price in quote token (USDC)
-            const requiredQuote = amount * price;
-            const availableQuote = parseFloat(quoteBalance.available || '0');
+            const requiredQuote = Number(orderPriceScaled) * Number(orderQtyScaled);
+            const availableQuote = Number(quoteBalanceScaled || '0');
 
             if (requiredQuote > availableQuote) {
                 return {
                     isValid: false,
-                    error: `Insufficient ${quoteSymbol}. Need ${requiredQuote.toFixed(2)}, have ${availableQuote.toFixed(2)}`
+                    error: `Insufficient ${quoteSymbol}`
                 };
             }
         } else {
             // SELL: Need amount in base token (WBTC)
-            const availableBase = parseFloat(baseBalance.available || '0');
+            const availableBase = Number(baseBalanceScaled);
 
-            if (amount > availableBase) {
+            if (Number(scaleToInt(String(amount), PERCISION)) > availableBase) {
                 return {
                     isValid: false,
-                    error: `Insufficient ${baseSymbol}. Need ${amount.toFixed(6)}, have ${availableBase.toFixed(6)}`
+                    error: `Insufficient ${baseSymbol}`
                 };
             }
         }
@@ -422,8 +443,8 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                     </button>
 
                     <TokenSelector
-                        selectedToken={selectedToken}
-                        onSelectToken={setSelectedToken}
+                        selectedToken={pair.base}
+                        onSelectToken={() => {}} // TokenSelector handles URL update internally
                     />
                 </div>
 
@@ -440,13 +461,12 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                                 type="text"
                                 placeholder="0.00"
                                 value={orderInput.amount}
-                                onChange={(e) => updateAmount(e.target.value)}
+                                onChange={(e) => updateAmount(limitDecimalPlaces(e.target.value))}
                                 className={`bg-transparent flex-1 outline-none ${
                                     !amountValidation.isValid ? 'text-red-400' : 'text-white'
                                 }`}
                             />
                             <span className="text-white font-medium ml-2">{pair.base}</span>
-                            <ArrowLeftRight className="w-4 h-4 text-gray-400 ml-2" />
                         </div>
 
                         {/* Error Message */}
@@ -456,10 +476,100 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                             </p>
                         )}
 
+                        {/* Percentage buttons */}
                         <div className="flex items-center justify-between mt-2 px-1">
-                            <button className="text-xs text-gray-400 hover:text-white">25%</button>
-                            <button className="text-xs text-gray-400 hover:text-white">50%</button>
-                            <button className="text-xs text-gray-400 hover:text-white">MAX</button>
+                            {orderInput.side === 'sell' ? (
+                                <>
+                                    {}
+                                    <button
+                                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                                        onClick={() => {
+                                            const available = parseFloat(baseBalance.available) || 0;
+                                            const amount = (available * 0.25).toFixed(4);
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        25%
+                                    </button>
+                                    <button
+                                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                                        onClick={() => {
+                                            const available = parseFloat(baseBalance.available) || 0;
+                                            const amount = (available * 0.5).toFixed(4);
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        50%
+                                    </button>
+                                    <button
+                                        className="text-xs text-gray-400 hover:text-white transition-colors"
+                                        onClick={() => {
+                                            const available = parseFloat(baseBalance.available) || 0;
+                                            updateAmount(available.toFixed(4));
+                                        }}
+                                    >
+                                        MAX
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    {}
+                                    <button
+                                        className={`text-xs transition-colors ${
+                                            !orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0
+                                                ? 'text-gray-600 cursor-not-allowed'
+                                                : 'text-gray-400 hover:text-white'
+                                        }`}
+                                        disabled={!orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0}
+                                        onClick={() => {
+                                            const price = parseFloat(orderInput.limitPrice || '0') || 0;
+                                            if (price <= 0) return;
+                                            const available = parseFloat(quoteBalance.available) || 0;
+                                            const rawAmount = (available * 0.25) / price;
+                                            const amount = (Math.floor(rawAmount * 10000) / 10000).toString();
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        25%
+                                    </button>
+                                    <button
+                                        className={`text-xs transition-colors ${
+                                            !orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0
+                                                ? 'text-gray-600 cursor-not-allowed'
+                                                : 'text-gray-400 hover:text-white'
+                                        }`}
+                                        disabled={!orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0}
+                                        onClick={() => {
+                                            const price = parseFloat(orderInput.limitPrice || '0') || 0;
+                                            if (price <= 0) return;
+                                            const available = parseFloat(quoteBalance.available) || 0;
+                                            const rawAmount = (available * 0.5) / price;
+                                            const amount = (Math.floor(rawAmount * 10000) / 10000).toString();
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        50%
+                                    </button>
+                                    <button
+                                        className={`text-xs transition-colors ${
+                                            !orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0
+                                                ? 'text-gray-600 cursor-not-allowed'
+                                                : 'text-gray-400 hover:text-white'
+                                        }`}
+                                        disabled={!orderInput.limitPrice || parseFloat(orderInput.limitPrice || '0') <= 0}
+                                        onClick={() => {
+                                            const price = parseFloat(orderInput.limitPrice || '0') || 0;
+                                            if (price <= 0) return;
+                                            const available = parseFloat(quoteBalance.available) || 0;
+                                            const rawAmount = available / price;
+                                            const amount = (Math.floor(rawAmount * 10000) / 10000).toString();
+                                            updateAmount(amount);
+                                        }}
+                                    >
+                                        MAX
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -471,7 +581,7 @@ const Sidebar = ({ selectedCrypto, onCryptoChange }: SidebarProps) => {
                                 type="text"
                                 placeholder="0.00"
                                 value={orderInput.limitPrice || ''}
-                                onChange={(e) => updatePrice(e.target.value)}
+                                onChange={(e) => updatePrice(limitDecimalPlaces(e.target.value))}
                                 className="bg-transparent flex-1 outline-none text-white"
                             />
                             <span className="text-gray-400 text-sm ml-2">{pair.quote}</span>

@@ -5,8 +5,9 @@ import { ChevronDown, Calendar, X, Circle } from 'lucide-react';
 import { usePrivy } from '@privy-io/react-auth';
 import { TokenIconBySymbol } from './TokenSelector';
 import { useTokenMapping } from '@/hooks/useTokenMapping';
-import { getOrderList, getMatchingHistory, getUserProfile, type Order, type MatchingHistory } from '@/lib/services';
+import { getOrderList, getMatchingHistory, getUserProfile, type Order, type MatchingHistory, getErrorMessage } from '@/lib/services';
 import { extractPrivyWalletId, getWalletAddressByConnectorType } from '@/lib/wallet-utils';
+import { useZenigmaAddress } from '@/hooks/useWalletKeys';
 import { useProof, useWalletUpdateProof } from '@/hooks/useProof';
 import { type OrderAction, type WalletState } from '@/hooks/useProof';
 import { signMessageWithSkRoot } from '@/lib/ethers-signer';
@@ -15,20 +16,18 @@ import toast from 'react-hot-toast';
 import { useChainId, useSwitchChain } from 'wagmi';
 import { ensureSepoliaChain } from '@/lib/chain-utils';
 import Header from './Header';
+import Pagination from './Pagination';
 import { useTokens } from '@/hooks/useTokens';
 import DateTimeRangePicker from './DateTimeRangePicker';
 import * as Tabs from '@radix-ui/react-tabs';
+import { DEFAULT_PAGINATION } from '@/lib/constants';
 
 // Order status mapping (from API string to UI display)
 const ORDER_STATUS = {
   'Created': { label: 'Created', color: 'text-cyan-500', dotColor: 'text-cyan-500 fill-cyan-500' },
   'Pending': { label: 'Pending', color: 'text-orange-500', dotColor: 'text-orange-500 fill-orange-500' },
-  'Matching': { label: 'Matching', color: 'text-orange-500', dotColor: 'text-orange-500 fill-orange-500' },
   'Filled': { label: 'Filled', color: 'text-blue-500', dotColor: 'text-blue-500 fill-blue-500' },
-  'Matched': { label: 'Matched', color: 'text-purple-500', dotColor: 'text-purple-500 fill-purple-500' },
   'Cancelled': { label: 'Cancelled', color: 'text-gray-500', dotColor: 'text-gray-500 fill-gray-500' },
-  'Open': { label: 'Open', color: 'text-green-500', dotColor: 'text-green-500 fill-green-500' },
-  'Partial': { label: 'Partial', color: 'text-orange-400', dotColor: 'text-orange-400 fill-orange-400' },
   'SettlingMatch': { label: 'Settling', color: 'text-yellow-500', dotColor: 'text-yellow-500 fill-yellow-500' },
 } as const;
 
@@ -50,6 +49,7 @@ const MyOrders = () => {
   const { switchChainAsync } = useSwitchChain();
   const { getSymbol } = useTokenMapping();
   const { tokens } = useTokens();
+  const zenigmaAddress = useZenigmaAddress();
   const [orders, setOrders] = useState<Order[]>([]);
   const [historyOrders, setHistoryOrders] = useState<MatchingHistory[]>([]);
   const [loading, setLoading] = useState(false);
@@ -59,6 +59,10 @@ const MyOrders = () => {
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [cancellingOrders, setCancellingOrders] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState('open');
+
+  // Pagination state
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalHistoryOrders, setTotalHistoryOrders] = useState(0);
 
   // Dropdown refs
   const statusDropdownRef = useRef<HTMLDivElement>(null);
@@ -71,9 +75,9 @@ const MyOrders = () => {
 
   // Filter state for Open Orders
   const [filters, setFiltersState] = useState<OrderFilters>({
-    status: ['Created', 'Pending', 'SettlingMatch'],
-    page: 1,
-    limit: 20,
+    status: ['Created', 'Pending', 'SettlingMatch', 'Filled', 'Cancelled'],
+    page: DEFAULT_PAGINATION.PAGE,
+    limit: DEFAULT_PAGINATION.LIMIT,
   });
 
   // Filter state for History Orders (uses timestamps in milliseconds)
@@ -83,8 +87,8 @@ const MyOrders = () => {
     from_date?: number;
     to_date?: number;
   }>({
-    page: 1,
-    limit: 20,
+    page: DEFAULT_PAGINATION.PAGE,
+    limit: DEFAULT_PAGINATION.LIMIT,
   });
 
   const [showFilters, setShowFilters] = useState({
@@ -154,8 +158,8 @@ const MyOrders = () => {
   const clearFilters = () => {
     setFiltersState({
       status: ['Created', 'Pending', 'SettlingMatch'],
-      page: 1,
-      limit: 20,
+      page: DEFAULT_PAGINATION.PAGE,
+      limit: DEFAULT_PAGINATION.LIMIT,
     });
     setStartDate(null);
     setEndDate(null);
@@ -164,8 +168,8 @@ const MyOrders = () => {
   // Clear history filters
   const clearHistoryFilters = () => {
     setHistoryFiltersState({
-      page: 1,
-      limit: 20,
+      page: DEFAULT_PAGINATION.PAGE,
+      limit: DEFAULT_PAGINATION.LIMIT,
     });
     setHistoryStartDate(null);
     setHistoryEndDate(null);
@@ -281,9 +285,7 @@ const MyOrders = () => {
         profile.nonce || 0
       );
 
-      const userSecret = '12312';
       const proofData = await generateWalletUpdateProofClient({
-        userSecret,
         oldNonce: profile.nonce?.toString() || '0',
         oldMerkleRoot: profile.merkle_root,
         oldMerkleIndex: profile.merkle_index,
@@ -305,7 +307,7 @@ const MyOrders = () => {
       });
 
       if (result.success && result.verified) {
-        toast.success('Order cancelled successfully!');
+        toast.success('Your cancel order is queued, please allow a few minutes for it to sync');
         const response = await getOrderList(walletId, filters);
         setOrders(response.data || []);
       } else {
@@ -319,7 +321,7 @@ const MyOrders = () => {
       });
     } catch (error) {
       console.error('❌ Error in cancel order process:', error);
-      toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
+      toast.error(getErrorMessage(error));
       setCancellingOrders(prev => {
         const newSet = new Set(prev);
         newSet.delete(orderIndex);
@@ -328,10 +330,11 @@ const MyOrders = () => {
     }
   };
 
-  // Fetch open orders
+  // Fetch open orders (only when Zenigma is connected)
   useEffect(() => {
-    if (!authenticated || !user?.id) {
+    if (!authenticated || !user?.id || !zenigmaAddress) {
       setOrders([]);
+      setTotalOrders(0);
       return;
     }
 
@@ -342,8 +345,10 @@ const MyOrders = () => {
         const walletId = extractPrivyWalletId(user.id);
         console.log('🔍 [MyOrders] Fetching open orders with filters:', filters);
         const response = await getOrderList(walletId, filters);
-        console.log('✅ [MyOrders] Open orders fetched:', response.data?.length || 0, 'orders');
+        console.log('✅ [MyOrders] Open orders fetched:', response.total || 0, 'orders');
         setOrders(response.data || []);
+        // Set total from API response if available, otherwise use data length
+        setTotalOrders(response.total ? response.total : 0);
       } catch (err) {
         console.error('❌ [MyOrders] Failed to fetch open orders:', err);
         setError(err instanceof Error ? err.message : 'Failed to fetch orders');
@@ -353,12 +358,13 @@ const MyOrders = () => {
     };
 
     fetchOrders();
-  }, [authenticated, user?.id, filters]);
+  }, [authenticated, user?.id, zenigmaAddress, filters]);
 
-  // Fetch matching history
+  // Fetch matching history (only when Zenigma is connected)
   useEffect(() => {
-    if (!authenticated || !user?.id) {
+    if (!authenticated || !user?.id || !zenigmaAddress) {
       setHistoryOrders([]);
+      setTotalHistoryOrders(0);
       return;
     }
 
@@ -371,6 +377,8 @@ const MyOrders = () => {
         const response = await getMatchingHistory(walletId, historyFilters);
         console.log('✅ [MyOrders] Matching history fetched:', response.data?.length || 0, 'records');
         setHistoryOrders(response.data || []);
+        // Set total from API response if available, otherwise use data length
+        setTotalHistoryOrders(response.total ? response.total : 0);
       } catch (err) {
         console.error('❌ [MyOrders] Failed to fetch matching history:', err);
         setHistoryError(err instanceof Error ? err.message : 'Failed to fetch history');
@@ -380,7 +388,7 @@ const MyOrders = () => {
     };
 
     fetchMatchingHistory();
-  }, [authenticated, user?.id, historyFilters]);
+  }, [authenticated, user?.id, zenigmaAddress, historyFilters]);
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -406,7 +414,7 @@ const MyOrders = () => {
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              Open Orders
+              Order History
               {activeTab === 'open' && (
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500" />
               )}
@@ -419,7 +427,7 @@ const MyOrders = () => {
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              Order History
+              Trading History
               {activeTab === 'history' && (
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-500" />
               )}
@@ -437,12 +445,25 @@ const MyOrders = () => {
                 <button
                   onClick={() => setShowFilters({ ...showFilters, status: !showFilters.status })}
                   className={`flex items-center gap-2 px-4 py-2 bg-black border rounded-lg text-sm transition-colors ${
-                    filters.status && filters.status.length > 0
+                    filters.status && filters.status.length === 1
                       ? 'border-gray-600 text-white'
                       : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                   }`}
                 >
-                  <span>Status</span>
+                  <Circle className={`w-3 h-3 ${
+                    filters.status?.length === 1
+                      ? ORDER_STATUS[filters.status[0] as keyof typeof ORDER_STATUS]?.dotColor || ''
+                      : ''
+                  }`} />
+                  <span className={
+                    filters.status?.length === 1
+                      ? ORDER_STATUS[filters.status[0] as keyof typeof ORDER_STATUS]?.color || ''
+                      : ''
+                  }>
+                    {filters.status?.length === 1
+                      ? ORDER_STATUS[filters.status[0] as keyof typeof ORDER_STATUS]?.label || 'Status'
+                      : 'Status'}
+                  </span>
                   <ChevronDown size={16} className={`transition-transform ${showFilters.status ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -512,7 +533,17 @@ const MyOrders = () => {
                       : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                   }`}
                 >
-                  <span>Side</span>
+                  <Circle className={`w-3 h-3 ${
+                    filters.side === 0 ? 'text-green-500 fill-green-500' :
+                    filters.side === 1 ? 'text-red-500 fill-red-500' : ''
+                  }`} />
+                  <span className={
+                    filters.side === 0 ? 'text-green-500' :
+                    filters.side === 1 ? 'text-red-500' : ''
+                  }>
+                    {filters.side === 0 ? 'Buy' :
+                     filters.side === 1 ? 'Sell' : 'Side'}
+                  </span>
                   <ChevronDown size={16} className={`transition-transform ${showFilters.side ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -550,7 +581,16 @@ const MyOrders = () => {
                       : 'border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white'
                   }`}
                 >
-                  <span>Token</span>
+                  {filters.token !== undefined ? (
+                    <TokenIconBySymbol symbol={tokens.find(t => t.index === filters.token)?.symbol || ''} size="sm" />
+                  ) : (
+                    <Circle className="w-3 h-3" />
+                  )}
+                  <span>
+                    {filters.token !== undefined
+                      ? tokens.find(t => t.index === filters.token)?.symbol || 'Token'
+                      : 'Token'}
+                  </span>
                   <ChevronDown size={16} className={`transition-transform ${showFilters.token ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -573,7 +613,6 @@ const MyOrders = () => {
                 )}
               </div>
 
-              {/* DateTime Range Picker */}
               <DateTimeRangePicker
                 startDate={startDate}
                 endDate={endDate}
@@ -595,15 +634,6 @@ const MyOrders = () => {
               </button>
             </div>
 
-            {/* Cancel Selected Button */}
-            {/*{selectedOrders.size > 0 && (*/}
-            {/*  <button*/}
-            {/*    onClick={handleCancelSelectedOrders}*/}
-            {/*    className="px-4 py-2 bg-red-600/20 border border-red-600/50 rounded-lg text-sm text-red-500 hover:bg-red-600/30 transition-colors"*/}
-            {/*  >*/}
-            {/*    Cancel {selectedOrders.size} {selectedOrders.size === 1 ? 'order' : 'orders'}*/}
-            {/*  </button>*/}
-            {/*)}*/}
           </div>
         </div>
 
@@ -640,7 +670,7 @@ const MyOrders = () => {
                     Order Value
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Filled [%]
+                    Filled
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Time
@@ -648,10 +678,10 @@ const MyOrders = () => {
                 </tr>
               </thead>
               <tbody className="bg-black divide-y divide-gray-800">
-                {!authenticated ? (
+                {!zenigmaAddress ? (
                   <tr>
                     <td colSpan={9} className="px-6 py-20 text-center text-gray-400">
-                      Sign in to view your orders.
+                      Sign in to Zenigma to view your orders.
                     </td>
                   </tr>
                 ) : loading ? (
@@ -738,7 +768,7 @@ const MyOrders = () => {
                           ${order.order_value?.toFixed(2) || '0.00'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-white">
-                          {order.filled}
+                          {order.filled.toFixed(2) || '0.00'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-400">
                           {orderTime}
@@ -750,6 +780,20 @@ const MyOrders = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination for Open Orders */}
+          {zenigmaAddress && !loading && orders.length > 0 && (
+            <Pagination
+              currentPage={filters.page || DEFAULT_PAGINATION.PAGE}
+              totalPages={Math.ceil(totalOrders / (filters.limit || DEFAULT_PAGINATION.LIMIT))}
+              totalItems={totalOrders}
+              pageSize={filters.limit || DEFAULT_PAGINATION.LIMIT}
+              onPageChange={(page) => setFiltersState((prev) => ({ ...prev, page }))}
+              onPageSizeChange={(limit) => setFiltersState((prev) => ({ ...prev, limit, page: DEFAULT_PAGINATION.PAGE }))}
+              showPageSizeSelector
+              pageSizeOptions={[5, 10, 20, 50]}
+            />
+          )}
         </div>
           </Tabs.Content>
 
@@ -807,19 +851,16 @@ const MyOrders = () => {
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                         Order Value
                       </th>
-                      {/*<th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">*/}
-                      {/*  Filled [%]*/}
-                      {/*</th>*/}
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
                         Time
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-black divide-y divide-gray-800">
-                    {!authenticated ? (
+                    {!zenigmaAddress ? (
                       <tr>
                         <td colSpan={8} className="px-6 py-20 text-center text-gray-400">
-                          Sign in to view your order history.
+                          Sign in to Zenigma to view your order history.
                         </td>
                       </tr>
                     ) : historyLoading ? (
@@ -907,6 +948,20 @@ const MyOrders = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Pagination for Trading History */}
+              {zenigmaAddress && !historyLoading && historyOrders.length > 0 && (
+                <Pagination
+                  currentPage={historyFilters.page || DEFAULT_PAGINATION.PAGE}
+                  totalPages={Math.ceil(totalHistoryOrders / (historyFilters.limit || DEFAULT_PAGINATION.LIMIT))}
+                  totalItems={totalHistoryOrders}
+                  pageSize={historyFilters.limit || DEFAULT_PAGINATION.LIMIT}
+                  onPageChange={(page) => setHistoryFiltersState((prev) => ({ ...prev, page }))}
+                  onPageSizeChange={(limit) => setHistoryFiltersState((prev) => ({ ...prev, limit, page: DEFAULT_PAGINATION.PAGE }))}
+                  showPageSizeSelector
+                  pageSizeOptions={[5, 10, 20, 50]}
+                />
+              )}
             </div>
           </Tabs.Content>
         </Tabs.Root>
