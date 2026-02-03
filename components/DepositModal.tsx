@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import Stepper, { Step } from './Stepper';
 import { useERC20Token } from '@/hooks/useERC20Token';
@@ -26,10 +26,13 @@ import { WETH_ABI } from '@/lib/abis/weth';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { chainMetadata } from '@/config';
 import Image from 'next/image';
+import { triggerTransferHistoryRefetch } from '@/store/transferHistory';
 
 interface DepositModalProps {
     isOpen: boolean;
     onClose: () => void;
+    onDepositSuccess?: () => void;
+    defaultToken?: string | null; // Pre-select token: 'native', 'USDC', 'USDT', etc.
 }
 
 // Token list will be updated with real balances in component
@@ -43,12 +46,19 @@ const NETWORKS = [
 
 type TokenType = 'native' | string; // 'native' or ERC20 token symbol (e.g., 'USDC', 'USDT')
 
-const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
+const DepositModal = ({ isOpen, onClose, onDepositSuccess, defaultToken }: DepositModalProps) => {
     // Chain (fixed to Sepolia)
-    const [selectedChainId, setSelectedChainId] = useState<number>(11155111); // Default Sepolia
+    const [selectedChainId, setSelectedChainId] = useState<number>(11155111);
 
     // Step 1: Token type selection
     const [selectedTokenType, setSelectedTokenType] = useState<TokenType | null>(null);
+
+    // Pre-select token when defaultToken is provided
+    useEffect(() => {
+        if (isOpen && defaultToken) {
+            setSelectedTokenType(defaultToken);
+        }
+    }, [isOpen, defaultToken]);
 
     // Get available ERC20 tokens from config
     const availableERC20Tokens = getAvailableERC20Tokens();
@@ -352,7 +362,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             await refetchProfile(walletId);
                             console.log('✅ Profile refreshed with new balances');
                         }
-
+                        // ✅ Trigger transfer history refetch (local callback + global trigger)
+                        onDepositSuccess?.();
+                        triggerTransferHistoryRefetch();
                         toast.success('Your deposit is queued, please allow a few minutes for it to sync', {
                             duration: 5000,
                         });
@@ -579,7 +591,9 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                             await refetchProfile(walletId);
                             console.log('✅ Profile refreshed with new balances');
                         }
-
+                        // ✅ Trigger transfer history refetch (local callback + global trigger)
+                        onDepositSuccess?.();
+                        triggerTransferHistoryRefetch();
                         toast.success('Your deposit is queued, please allow a few minutes for it to sync', {
                             duration: 5000,
                         });
@@ -702,7 +716,7 @@ const DepositModal = ({ isOpen, onClose }: DepositModalProps) => {
                 {/* Stepper */}
                 <div className="px-5 py-4">
                     <Stepper
-                        initialStep={1}
+                        initialStep={defaultToken ? 2 : 1}
                         onStepChange={handleStepChange}
                         onFinalStepCompleted={handleComplete}
                         stepCircleContainerClassName="stepper-custom"
