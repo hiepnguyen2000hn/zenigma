@@ -18,7 +18,7 @@ import DepositModal from './DepositModal';
 import DateTimeRangePicker from './DateTimeRangePicker';
 import { useTokens } from '@/hooks/useTokens';
 import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
-import { DEFAULT_PAGINATION } from '@/lib/constants';
+import { DEFAULT_PAGINATION, getAvailableERC20Tokens } from '@/lib/constants';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import toast from 'react-hot-toast';
 import { useAtomValue } from 'jotai';
@@ -56,8 +56,8 @@ interface Asset {
 interface TransferFilters {
   page?: number;
   limit?: number;
-  status?: string[];      // ['pending', 'completed', 'failed']
-  direction?: string[];   // ['0', '1'] - 0=DEPOSIT, 1=WITHDRAW
+  status?: string[];      
+  direction?: string[];   
   token?: number;
   from_date?: string;
   to_date?: string;
@@ -343,7 +343,6 @@ const MyAssets = () => {
         }
 
         // Step 3: Fetch transfers
-        console.log('🔄 [MyAssets] Fetching transfers...');
         const transferResponse = await getTransferHistory(walletId, filters);
         if (isCancelled) return;
         setTransfers(transferResponse.data || []);
@@ -483,11 +482,18 @@ const MyAssets = () => {
                       const walletDecimals = isNativeToken ? 2 : 2;
                       // Format balance zenigma - always 2 decimal places
                       const zenigmaBalance = parseFloat(asset.balance);
+                      // Check if token is supported for deposit (WETH/native, USDC, USDT)
+                      const supportedERC20Symbols = getAvailableERC20Tokens().map(t => t.symbol);
+                      const isDepositSupported = symbol === 'WETH' || supportedERC20Symbols.includes(symbol);
+
                       return (
                         <tr
                           key={index}
-                          className="hover:bg-gray-800 transition-colors cursor-pointer"
+                          className={`hover:bg-gray-800 transition-colors ${isDepositSupported ? 'cursor-pointer' : 'cursor-default'}`}
                           onClick={() => {
+                            // Only open deposit modal for supported tokens
+                            if (!isDepositSupported) return;
+
                             // Map token symbol to deposit token type
                             // WETH in assets table should open as 'native' (SepoliaETH) in deposit modal
                             const depositToken = symbol === 'WETH' ? 'native' : symbol;
