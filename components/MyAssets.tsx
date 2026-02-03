@@ -21,6 +21,8 @@ import { useAllTokenBalances } from '@/hooks/useAllTokenBalances';
 import { DEFAULT_PAGINATION } from '@/lib/constants';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import toast from 'react-hot-toast';
+import { useAtomValue } from 'jotai';
+import { transferHistoryRefetchTriggerAtom } from '@/store/transferHistory';
 
 // Transfer direction mapping (from API string to UI display)
 const TRANSFER_DIRECTION = {
@@ -30,7 +32,7 @@ const TRANSFER_DIRECTION = {
 
 // Transfer status mapping (from API string to UI display)
 const TRANSFER_STATUS = {
-  queued: { label: 'Queued', color: 'text-yellow-500' },
+  pending: { label: 'Pending', color: 'text-yellow-500' },
   completed: { label: 'Completed', color: 'text-green-500' },
   failed: { label: 'Failed', color: 'text-red-500' },
 } as const;
@@ -81,6 +83,9 @@ const MyAssets = () => {
   const { balance: userBalance, loading: balanceLoading, fetchBalance } = useUserBalance();
   const zenigmaAddress = useZenigmaAddress();
 
+  // Listen to global refetch trigger (from Header's DepositModal)
+  const transferHistoryRefetchTrigger = useAtomValue(transferHistoryRefetchTriggerAtom);
+
   // Filter tokens with valid contract addresses for balance reading
   // Only USDC, WETH, USDT (real addresses) will be queried
   // Placeholder addresses (0x000...001) will return "0" by default
@@ -98,6 +103,7 @@ const MyAssets = () => {
   const [error, setError] = useState<string | null>(null);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [selectedDepositToken, setSelectedDepositToken] = useState<string | null>(null);
 
   // Dropdown refs
   const statusDropdownRef = useRef<HTMLDivElement>(null);
@@ -190,17 +196,25 @@ const MyAssets = () => {
 
     try {
       const walletId = extractPrivyWalletId(user.id);
-      console.log('🔄 Refetching transfer history for wallet:', walletId);
       const transferResponse = await getTransferHistory(walletId, {
-        page: 1,
-        limit: 20,
+        page: DEFAULT_PAGINATION.PAGE,
+        limit: DEFAULT_PAGINATION.LIMIT,
       });
-      console.log('✅ Transfer history refreshed:', transferResponse);
       setTransfers(transferResponse.data || []);
     } catch (err) {
       console.error('Failed to refetch transfer history:', err);
     }
   }, [user?.id]);
+
+  const isFirstTriggerRender = useRef(true);
+  useEffect(() => {
+    if (isFirstTriggerRender.current) {
+      isFirstTriggerRender.current = false;
+      return;
+    }
+
+    fetchTransferHistory();
+  }, [transferHistoryRefetchTrigger, fetchTransferHistory]);
 
   // ============================================
   // SSE Message Handler (stored in ref to avoid reconnection)
@@ -236,7 +250,6 @@ const MyAssets = () => {
             });
           }
 
-          // Re-fetch transfer history for both DEPOSIT and WITHDRAW
           fetchTransferHistory();
 
           // Show toast based on transfer direction
@@ -474,7 +487,13 @@ const MyAssets = () => {
                         <tr
                           key={index}
                           className="hover:bg-gray-800 transition-colors cursor-pointer"
-                          onClick={() => setIsDepositModalOpen(true)}
+                          onClick={() => {
+                            // Map token symbol to deposit token type
+                            // WETH in assets table should open as 'native' (SepoliaETH) in deposit modal
+                            const depositToken = symbol === 'WETH' ? 'native' : symbol;
+                            setSelectedDepositToken(depositToken);
+                            setIsDepositModalOpen(true);
+                          }}
                         >
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
@@ -766,7 +785,7 @@ const MyAssets = () => {
                     // Get symbol from tokens array (from useTokens hook)
                     const tokenInfo = tokens.find(t => t.index === transfer.token);
                     const symbol = tokenInfo?.symbol || getSymbol(transfer.token);
-                    const status = TRANSFER_STATUS[transfer.status as keyof typeof TRANSFER_STATUS] || TRANSFER_STATUS.queued;
+                    const status = TRANSFER_STATUS[transfer.status as keyof typeof TRANSFER_STATUS] || TRANSFER_STATUS.pending;
                     const direction = TRANSFER_DIRECTION[transfer.direction as keyof typeof TRANSFER_DIRECTION] || TRANSFER_DIRECTION.DEPOSIT;
 
                     // Format time from ISO string
@@ -858,7 +877,12 @@ const MyAssets = () => {
       {/* Deposit Modal */}
       <DepositModal
         isOpen={isDepositModalOpen}
-        onClose={() => setIsDepositModalOpen(false)}
+        onClose={() => {
+          setIsDepositModalOpen(false);
+          setSelectedDepositToken(null);
+        }}
+        onDepositSuccess={fetchTransferHistory}
+        defaultToken={selectedDepositToken}
       />
     </div>
   );

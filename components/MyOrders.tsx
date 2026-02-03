@@ -643,14 +643,14 @@ const MyOrders = () => {
             <table className="w-full">
               <thead className="bg-gray-900 border-b border-gray-800">
                 <tr>
-                  <th className="px-6 py-3 text-left">
+                  {/* <th className="px-6 py-3 text-left">
                     <input
                       type="checkbox"
                       checked={selectedOrders.size === orders.length && orders.length > 0}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500"
                     />
-                  </th>
+                  </th> */}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                     Status
                   </th>

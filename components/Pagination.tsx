@@ -21,7 +21,7 @@ const Pagination = ({
   onPageChange,
   onPageSizeChange,
   showPageSizeSelector = false,
-  pageSizeOptions = [10, 20, 50],
+  pageSizeOptions = [5, 10, 20, 50],
 }: PaginationProps) => {
   const canGoPrev = currentPage > 1;
   const canGoNext = currentPage < totalPages;
